@@ -1,0 +1,48 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isCoordinator() {
+      return signedIn() && request.auth.token.email == 'saidah.khwar11@gmail.com';
+    }
+    function ownsClass(classId) {
+      return signedIn() &&
+        get(/databases/$(database)/documents/classes/$(classId)).data.teacherEmail == request.auth.token.email;
+    }
+
+    match /classes/{classId} {
+      allow read: if isCoordinator() || (signedIn() && resource.data.teacherEmail == request.auth.token.email);
+      allow create: if signedIn() && request.resource.data.teacherEmail == request.auth.token.email;
+      allow update: if signedIn()
+        && resource.data.teacherEmail == request.auth.token.email
+        && request.resource.data.teacherEmail == request.auth.token.email;
+      allow delete: if signedIn()
+        && resource.data.teacherEmail == request.auth.token.email;
+    }
+    match /students/{studentId} {
+      allow read: if isCoordinator() || ownsClass(resource.data.classId);
+      allow update, delete: if ownsClass(resource.data.classId);
+      allow create: if ownsClass(request.resource.data.classId);
+    }
+    match /assessments/{assessmentId} {
+      allow read: if isCoordinator() || ownsClass(resource.data.classId);
+      allow update, delete: if ownsClass(resource.data.classId);
+      allow create: if ownsClass(request.resource.data.classId);
+    }
+    match /scores/{scoreId} {
+      allow read: if isCoordinator() || ownsClass(resource.data.classId);
+      allow update, delete: if ownsClass(resource.data.classId);
+      allow create: if ownsClass(request.resource.data.classId);
+    }
+    match /comments/{commentId} {
+      allow read: if isCoordinator() || ownsClass(resource.data.classId);
+      allow create: if signedIn()
+        && request.resource.data.authorEmail == request.auth.token.email
+        && (isCoordinator() || ownsClass(request.resource.data.classId));
+      allow update: if signedIn()
+        && resource.data.authorEmail == request.auth.token.email
+        && (isCoordinator() || ownsClass(resource.data.classId));
+      allow delete: if isCoordinator() || ownsClass(resource.data.classId);
+    }
+  }
+}
