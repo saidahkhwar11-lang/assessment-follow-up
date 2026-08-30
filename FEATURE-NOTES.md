@@ -14,3 +14,9 @@
 - Generated plans include Area of Need / Long-Term Aim, SMART Targets, Support Strategies, How / Where / When, Success Criteria, and printable school-ready output.
 - Next Review Date and final Review remain teacher-completed fields so the system does not invent evidence of progress.
 - Recommendations should be adjusted by the teacher using current classwork, attendance and professional judgement.
+# Admin grade-on-demand loading
+
+- The Admin overview first loads only the lightweight class list and grade choices.
+- Student and assessment records load only after the administrator selects a grade.
+- Marks, diagnostic details, and comments continue to load only after a specific class is opened.
+- Teacher Portal behaviour and all existing assessment, support-plan, Excel, editing, and calculation features are unchanged.
