@@ -82,6 +82,9 @@ const testTypes: TestType[] = [
   "Extra Credit Exam",
   "Bonus",
 ];
+const teacherAssessmentTypes = testTypes.filter(
+  (type) => type !== "Diagnostic",
+);
 const plan: Record<TestType, number> = {
   Diagnostic: 1,
   Reading: 2,
@@ -221,7 +224,14 @@ export default function Home({
   }, [diagnosticDetail?.student.id, classes]);
 
 
-  const selectedStudents = students.filter((s) => s.classId === selectedId);
+  const selectedStudents = students
+    .filter((s) => s.classId === selectedId)
+    .sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, {
+        sensitivity: "base",
+        numeric: true,
+      }),
+    );
   const selectedTests = tests.filter((t) => t.classId === selectedId);
   const flash = (m: string) => {
     setMessage(m);
@@ -1530,7 +1540,7 @@ export default function Home({
                           setNewAssessmentMax(defaultMaximum(type));
                         }}
                       >
-                        {testTypes.map((t) => (
+                        {teacherAssessmentTypes.map((t) => (
                           <option key={t}>{t}</option>
                         ))}
                       </select>
@@ -1593,7 +1603,7 @@ export default function Home({
                     <button className="primary" onClick={addTest}>
                       ＋ Add assessment column
                     </button>
-                    <span>Unlimited columns · any assessment type may be repeated.</span>
+                    <span>Unlimited columns · regular assessment types may be repeated.</span>
                   </div>
                 )}
                 <div className="table-wrap marks">
