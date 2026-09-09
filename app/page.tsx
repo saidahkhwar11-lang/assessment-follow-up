@@ -56,8 +56,19 @@ type Score = {
   studentId: string;
   value: string;
 };
-type DiagnosticResult = { studentId: string; score: number; level: string; skills?: { Grammar?: number; Vocabulary?: number; Context?: number; Reading?: number }; completedAt?: number };
+type DiagnosticResult = {
+  studentId: string;
+  score: number;
+  level: string;
+  skills?: { Grammar?: number; Vocabulary?: number; Context?: number; Reading?: number };
+  completedAt?: number | string;
+  submittedAt?: number | string;
+  createdAt?: number | string;
+  updatedAt?: number | string;
+  timestamp?: number | string;
+};
 type TierName = "Tier 1" | "Tier 2" | "Tier 3";
+type SupportPlanSource = "diagnostic" | "ca";
 type TierStudent = { student: Student; total: number; diagnostic?: DiagnosticResult };
 type TierSnapshot = Record<TierName, TierStudent[]>;
 type Comment = {
@@ -69,6 +80,21 @@ type Comment = {
   parentId: string;
   createdAt: number;
 };
+
+function diagnosticResultTime(result?: DiagnosticResult) {
+  if (!result) return 0;
+  const values = [result.completedAt, result.submittedAt, result.updatedAt, result.createdAt, result.timestamp];
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && value.trim()) {
+      const numeric = Number(value);
+      if (Number.isFinite(numeric)) return numeric;
+      const parsed = Date.parse(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return 0;
+}
 
 const planTypes: TestType[] = [
   "Diagnostic",
@@ -82,9 +108,6 @@ const testTypes: TestType[] = [
   "Extra Credit Exam",
   "Bonus",
 ];
-const teacherAssessmentTypes = testTypes.filter(
-  (type) => type !== "Diagnostic",
-);
 const plan: Record<TestType, number> = {
   Diagnostic: 1,
   Reading: 2,
@@ -152,6 +175,7 @@ export default function Home({
     [newGradeLevel, setNewGradeLevel] = useState<(typeof gradeLevels)[number]>("Grade 5"),
     [newSection, setNewSection] = useState(""),
     [classViewTab, setClassViewTab] = useState<"tracker" | "support">("tracker"),
+    [supportPlanSource, setSupportPlanSource] = useState<SupportPlanSource>("diagnostic"),
     [tierSnapshot, setTierSnapshot] = useState<TierSnapshot | null>(null),
     [supportPlanReady, setSupportPlanReady] = useState(false),
     [newTeacherName, setNewTeacherName] = useState("");
@@ -173,15 +197,17 @@ export default function Home({
     const unsubscribe = onValue(gradeRef, (snapshot) => {
       const raw = snapshot.val() || {};
       const next: Record<string, DiagnosticResult> = {};
+      const latestRank: Record<string, { time: number; key: string }> = {};
       Object.values(raw).forEach((classResults) =>
-        Object.values((classResults || {}) as Record<string, DiagnosticResult>).forEach((result) => {
+        Object.entries((classResults || {}) as Record<string, DiagnosticResult>).forEach(([resultKey, result]) => {
           if (result?.studentId) {
-            next[`${grade}:${String(result.studentId).trim()}`] = {
-              studentId: result.studentId,
-              score: result.score,
-              level: result.level,
-              skills: result.skills,
-            };
+            const lookupKey = `${grade}:${String(result.studentId).trim()}`;
+            const rank = { time: diagnosticResultTime(result), key: resultKey };
+            const current = latestRank[lookupKey];
+            if (!current || rank.time > current.time || (rank.time === current.time && rank.key > current.key)) {
+              next[lookupKey] = result;
+              latestRank[lookupKey] = rank;
+            }
           }
         }),
       );
@@ -205,13 +231,16 @@ export default function Home({
     const unsubscribe = onValue(resultsRef, (snapshot) => {
       const raw = snapshot.val() || {};
       let found: DiagnosticResult | undefined;
-      Object.values(raw).some((classResults) =>
-        Object.values((classResults || {}) as Record<string, DiagnosticResult>).some((result) => {
+      let foundRank = { time: -1, key: "" };
+      Object.values(raw).forEach((classResults) =>
+        Object.entries((classResults || {}) as Record<string, DiagnosticResult>).forEach(([resultKey, result]) => {
           if (String(result?.studentId ?? "").trim() === diagnosticDetail.student.studentId.trim()) {
-            found = result;
-            return true;
+            const rank = { time: diagnosticResultTime(result), key: resultKey };
+            if (rank.time > foundRank.time || (rank.time === foundRank.time && rank.key > foundRank.key)) {
+              found = result;
+              foundRank = rank;
+            }
           }
-          return false;
         }),
       );
       setDiagnosticDetail((current) =>
@@ -224,14 +253,7 @@ export default function Home({
   }, [diagnosticDetail?.student.id, classes]);
 
 
-  const selectedStudents = students
-    .filter((s) => s.classId === selectedId)
-    .sort((a, b) =>
-      a.name.localeCompare(b.name, undefined, {
-        sensitivity: "base",
-        numeric: true,
-      }),
-    );
+  const selectedStudents = students.filter((s) => s.classId === selectedId);
   const selectedTests = tests.filter((t) => t.classId === selectedId);
   const flash = (m: string) => {
     setMessage(m);
@@ -244,6 +266,7 @@ export default function Home({
     setTargetMode("all");
     setTargetStudentIds([]);
     setClassViewTab("tracker");
+    setSupportPlanSource("diagnostic");
     setTierSnapshot(null);
     setSupportPlanReady(false);
   }, [selectedId]);
@@ -587,9 +610,11 @@ export default function Home({
     if (!selected) return;
     const next: TierSnapshot = { "Tier 1": [], "Tier 2": [], "Tier 3": [] };
     selectedStudents.forEach((student) => {
-      if (!hasContinuousAssessmentData(student.id)) return;
-      const total = continuousTotal(student.id);
-      const item: TierStudent = { student, total, diagnostic: diagnosticFor(student) };
+      const diagnostic = diagnosticFor(student);
+      if (supportPlanSource === "diagnostic" && !diagnostic) return;
+      if (supportPlanSource === "ca" && !hasContinuousAssessmentData(student.id)) return;
+      const total = supportPlanSource === "diagnostic" ? Number(diagnostic?.score || 0) : continuousTotal(student.id);
+      const item: TierStudent = { student, total, diagnostic };
       if (total >= 90) next["Tier 1"].push(item);
       else if (total >= 61) next["Tier 2"].push(item);
       else next["Tier 3"].push(item);
@@ -833,7 +858,9 @@ export default function Home({
     return {
       aim,
       focusLabel: selectedFocus.map((x) => `${skillSupportLibrary[x.skill].name} (${x.average}% tier average)`).join(" · "),
-      targets: [...targets, ...(tier === "Tier 1" ? ["Maintain 90%+ in continuous assessment while completing the agreed age-appropriate extension tasks independently."] : ["Use teacher feedback to correct the focus skill and demonstrate reduced prompting by the next review cycle."])],
+      targets: [...targets, ...(tier === "Tier 1"
+        ? [supportPlanSource === "diagnostic" ? "Maintain strong Diagnostic skill performance while completing the agreed age-appropriate extension tasks independently." : "Maintain 90%+ in continuous assessment while completing the agreed age-appropriate extension tasks independently."]
+        : ["Use teacher feedback to correct the focus skill and demonstrate reduced prompting by the next review cycle."])],
       strategies: [...strategies, "Collect one short skill check/work sample and the next relevant assessment as evidence; adjust scaffolding or challenge from the evidence rather than repeating the same plan."],
       howWhereWhen: tier === "Tier 1"
         ? ["How: extension, authentic texts/tasks, evidence-based discussion/writing, conferencing and independent application.", "Where: regular English lessons and suitable enrichment opportunities.", "When: one purposeful extension at least every two weeks; review using the next relevant assessment/work sample."]
@@ -856,13 +883,17 @@ export default function Home({
       const focus = weakestDiagnosticAreas(items);
       const base = buildSupportPlan(tier, items);
       const names = items.length ? items.map((x) => `${esc(x.student.name)} (${x.total}%)`).join(" • ") : "No students in this tier";
-      const focusText = focus.length ? base.focusLabel : "Use ongoing class assessment evidence; Diagnostic skill data is not yet available for this tier.";
+      const focusText = focus.length ? base.focusLabel : "Diagnostic skill data is not yet available for this tier.";
+      const evidenceLabel = supportPlanSource === "diagnostic" ? "Diagnostic result" : "CA Total";
       const lis = (arr: string[]) => `<ul>${arr.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`;
-      return `<section><h2>${tier} - ${tierMeta[tier].range}</h2><p class=desc>${esc(tierMeta[tier].description)}</p><table><tr><th>Grade / Class</th><td>${esc(classGradeLevel(selected))} · ${esc(selected.section)}</td><th>Teacher</th><td>${esc(selected.teacherName)}</td></tr><tr><th>Students</th><td colspan=3>${names}</td></tr><tr><th>Area of Need / Long-Term Aim</th><td colspan=3>${esc(base.aim)}<br><b>Diagnostic focus:</b> ${esc(focusText)}</td></tr><tr><th>SMART Targets</th><td>${lis(base.targets)}</td><th>Support Strategies</th><td>${lis(base.strategies)}</td></tr><tr><th>How / Where / When</th><td>${lis(base.howWhereWhen)}</td><th>Success Criteria</th><td>${lis(base.success)}</td></tr><tr><th>Next Review Date</th><td>________________</td><th>Review</th><td>Review progress using the next assessment cycle and update the tier if the student's Continuous Assessment Total changes.</td></tr></table></section>`;
+      return `<section><h2>${tier} - ${tierMeta[tier].range}</h2><p class=desc>${esc(tierMeta[tier].description)}</p><table><tr><th>Grade / Class</th><td>${esc(classGradeLevel(selected))} · ${esc(selected.section)}</td><th>Teacher</th><td>${esc(selected.teacherName)}</td></tr><tr><th>Students (${evidenceLabel})</th><td colspan=3>${names}</td></tr><tr><th>Area of Need / Long-Term Aim</th><td colspan=3>${esc(base.aim)}<br><b>Diagnostic focus:</b> ${esc(focusText)}</td></tr><tr><th>SMART Targets</th><td>${lis(base.targets)}</td><th>Support Strategies</th><td>${lis(base.strategies)}</td></tr><tr><th>How / Where / When</th><td>${lis(base.howWhereWhen)}</td><th>Success Criteria</th><td>${lis(base.success)}</td></tr><tr><th>Next Review Date</th><td>________________</td><th>Review</th><td>Review progress using the next ${supportPlanSource === "diagnostic" ? "Diagnostic check" : "assessment cycle"} and update the tier when the student's ${evidenceLabel} changes.</td></tr></table></section>`;
     }).join("");
     const w = window.open("", "_blank");
     if (!w) { flash("Please allow pop-ups to print the support plan"); return; }
-    w.document.write(`<!doctype html><html><head><title>${esc(selected.section)} Support Plan</title><style>@page{size:A4 landscape;margin:12mm}body{font-family:Arial,sans-serif;color:#172536;margin:0}h1{text-align:center;margin:0 0 6px}h2{background:#eaf1f7;padding:8px 10px;border-left:5px solid #315f8d;margin-top:22px}.meta{text-align:center;color:#596979;margin-bottom:16px}.desc{font-weight:700}table{width:100%;border-collapse:collapse;font-size:11px}th,td{border:1px solid #7f929f;padding:7px;vertical-align:top}th{background:#f3f6f8;text-align:left;width:16%}ul{margin:0;padding-left:17px}li{margin:0 0 4px}section{break-after:page}section:last-child{break-after:auto}.note{margin-top:12px;font-size:10px;color:#596979}</style></head><body><h1>Al Reyadah School - English Department</h1><div class=meta>Individualized Support Plans · Term 1 · Academic Year 2026-2027</div>${sections}<p class=note>Tier placement is based on the current Continuous Assessment Total /100. Diagnostic skill data is used only to personalise recommended targets and strategies; it is not included in the continuous total. Recommendations are classroom supports and should be adjusted by the teacher using current work samples, attendance and professional judgement. Review Date and final Review are intentionally left for the teacher to complete using real evidence.</p><script>window.onload=()=>window.print()<\/script></body></html>`);
+    const sourceNote = supportPlanSource === "diagnostic"
+      ? "Tier placement is based on each student's linked Diagnostic result /100. Diagnostic skill results personalise the recommended targets and strategies."
+      : "Tier placement is based on the current Continuous Assessment Total /100. Diagnostic skill data is used only to personalise recommended targets and strategies; it is not included in the continuous total.";
+    w.document.write(`<!doctype html><html><head><title>${esc(selected.section)} Support Plan</title><style>@page{size:A4 landscape;margin:12mm}body{font-family:Arial,sans-serif;color:#172536;margin:0}h1{text-align:center;margin:0 0 6px}h2{background:#eaf1f7;padding:8px 10px;border-left:5px solid #315f8d;margin-top:22px}.meta{text-align:center;color:#596979;margin-bottom:16px}.desc{font-weight:700}table{width:100%;border-collapse:collapse;font-size:11px}th,td{border:1px solid #7f929f;padding:7px;vertical-align:top}th{background:#f3f6f8;text-align:left;width:16%}ul{margin:0;padding-left:17px}li{margin:0 0 4px}section{break-after:page}section:last-child{break-after:auto}.note{margin-top:12px;font-size:10px;color:#596979}</style></head><body><h1>Al Reyadah School - English Department</h1><div class=meta>${supportPlanSource === "diagnostic" ? "Diagnostic" : "Continuous Assessment"} Support Plans · Term 1 · Academic Year 2026-2027</div>${sections}<p class=note>${sourceNote} Recommendations are classroom supports and should be adjusted by the teacher using current work samples, attendance and professional judgement. Review Date and final Review are intentionally left for the teacher to complete using real evidence.</p><script>window.onload=()=>window.print()<\/script></body></html>`);
     w.document.close();
   }
 
@@ -1540,7 +1571,7 @@ export default function Home({
                           setNewAssessmentMax(defaultMaximum(type));
                         }}
                       >
-                        {teacherAssessmentTypes.map((t) => (
+                        {testTypes.map((t) => (
                           <option key={t}>{t}</option>
                         ))}
                       </select>
@@ -1603,7 +1634,7 @@ export default function Home({
                     <button className="primary" onClick={addTest}>
                       ＋ Add assessment column
                     </button>
-                    <span>Unlimited columns · regular assessment types may be repeated.</span>
+                    <span>Unlimited columns · any assessment type may be repeated.</span>
                   </div>
                 )}
                 <div className="table-wrap marks">
@@ -1788,9 +1819,13 @@ export default function Home({
                     <div>
                       <p className="eyebrow">ON-DEMAND · NO EXTRA LIVE LISTENERS</p>
                       <h2>Student Levels &amp; Support Plan</h2>
-                      <p>Extract the selected class into the school's three support tiers using the current Continuous Assessment Total /100.</p>
+                      <p>Choose Diagnostic results or CA marks, then extract the selected class into the school's three support tiers.</p>
                     </div>
-                    <button type="button" className="primary" onClick={extractStudentLevels}>Extract Levels</button>
+                    <button type="button" className="primary" onClick={extractStudentLevels}>Extract {supportPlanSource === "diagnostic" ? "Diagnostic" : "CA"} Levels</button>
+                  </div>
+                  <div className="support-source-options" role="group" aria-label="Support plan source">
+                    <button type="button" className={supportPlanSource === "diagnostic" ? "active" : ""} onClick={() => { setSupportPlanSource("diagnostic"); setTierSnapshot(null); setSupportPlanReady(false); }}><b>Diagnostic Support Plan</b><span>Uses the automatically linked Diagnostic result and skill areas.</span></button>
+                    <button type="button" className={supportPlanSource === "ca" ? "active" : ""} onClick={() => { setSupportPlanSource("ca"); setTierSnapshot(null); setSupportPlanReady(false); }}><b>CA Marks Support Plan</b><span>Uses the current Continuous Assessment Total /100.</span></button>
                   </div>
                   <div className="tier-rule-grid">
                     {(["Tier 1", "Tier 2", "Tier 3"] as TierName[]).map((tier) => (
@@ -1820,8 +1855,8 @@ export default function Home({
                           );
                         })}
                       </div>
-                      {selectedStudents.some((student) => !hasContinuousAssessmentData(student.id)) && (
-                        <div className="support-warning">Students with no entered continuous-assessment marks are not placed in a tier yet.</div>
+                      {selectedStudents.some((student) => supportPlanSource === "diagnostic" ? !diagnosticFor(student) : !hasContinuousAssessmentData(student.id)) && (
+                        <div className="support-warning">Students with no {supportPlanSource === "diagnostic" ? "linked Diagnostic result" : "entered continuous-assessment marks"} are not placed in a tier yet.</div>
                       )}
                       <div className="support-actions">
                         <button type="button" className="secondary" onClick={() => setSupportPlanReady(true)}>Generate Class Support Plan</button>
