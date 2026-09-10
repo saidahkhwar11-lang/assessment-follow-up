@@ -3,131 +3,30 @@ name: Apply Diagnostic Compatibility Fix
 on:
   push:
     paths:
+      - 'scripts/fix-diagnostic-reader.py'
       - '.github/workflows/apply-diagnostic-compat-fix.yml'
 
 permissions:
   contents: write
 
 jobs:
-  patch-build-deploy:
+  fix:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
-
-      - name: Patch Diagnostic reader
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('app/page.tsx')
-          text = path.read_text(encoding='utf-8')
-          old = '''    const gradeRef = databaseRef(
-      diagnosticDb,
-      `teacherControlCenter/diagnosticByGrade/grade${grade}/results`,
-    );
-    const unsubscribe = onValue(gradeRef, (snapshot) => {
-      const raw = snapshot.val() || {};
-      const next: Record<string, DiagnosticResult> = {};
-      const latestRank: Record<string, { time: number; key: string }> = {};
-      Object.values(raw).forEach((classResults) =>
-        Object.entries((classResults || {}) as Record<string, DiagnosticResult>).forEach(([resultKey, result]) => {
-          if (result?.studentId) {
-            const lookupKey = `${grade}:${String(result.studentId).trim()}`;
-            const rank = { time: diagnosticResultTime(result), key: resultKey };
-            const current = latestRank[lookupKey];
-            if (!current || rank.time > current.time || (rank.time === current.time && rank.key > current.key)) {
-              next[lookupKey] = result;
-              latestRank[lookupKey] = rank;
-            }
-          }
-        }),
-      );
-      setDiagnosticResults(next);
-    });
-    return unsubscribe;'''
-          new = '''    const legacyRef = databaseRef(
-      diagnosticDb,
-      `teacherControlCenter/diagnosticByGrade/grade${grade}/results`,
-    );
-    const currentRef = databaseRef(
-      diagnosticDb,
-      `teacherControlCenter/diagnosticByGrade/grade${grade}/resultsByStudent`,
-    );
-    let legacyRaw: Record<string, Record<string, DiagnosticResult>> = {};
-    let currentRaw: Record<string, Record<string, DiagnosticResult>> = {};
-    const rebuild = () => {
-      const next: Record<string, DiagnosticResult> = {};
-      const latestRank: Record<string, { time: number; key: string }> = {};
-      const consider = (resultKey: string, result?: DiagnosticResult) => {
-        if (!result?.studentId) return;
-        const lookupKey = `${grade}:${String(result.studentId).trim()}`;
-        const rank = { time: diagnosticResultTime(result), key: resultKey };
-        const current = latestRank[lookupKey];
-        if (!current || rank.time > current.time || (rank.time === current.time && rank.key > current.key)) {
-          next[lookupKey] = result;
-          latestRank[lookupKey] = rank;
-        }
-      };
-      Object.entries(legacyRaw).forEach(([classKey, classResults]) =>
-        Object.entries(classResults || {}).forEach(([resultKey, result]) =>
-          consider(`legacy:${classKey}:${resultKey}`, result),
-        ),
-      );
-      Object.entries(currentRaw).forEach(([studentKey, levelResults]) =>
-        Object.entries(levelResults || {}).forEach(([levelKey, result]) =>
-          consider(`current:${studentKey}:${levelKey}`, result),
-        ),
-      );
-      setDiagnosticResults(next);
-    };
-    const unsubscribeLegacy = onValue(legacyRef, (snapshot) => {
-      legacyRaw = (snapshot.val() || {}) as Record<string, Record<string, DiagnosticResult>>;
-      rebuild();
-    });
-    const unsubscribeCurrent = onValue(currentRef, (snapshot) => {
-      currentRaw = (snapshot.val() || {}) as Record<string, Record<string, DiagnosticResult>>;
-      rebuild();
-    });
-    return () => {
-      unsubscribeLegacy();
-      unsubscribeCurrent();
-    };'''
-          if old not in text:
-              raise SystemExit('Expected Diagnostic reader block not found; refusing partial edit')
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
-          PY
-
-      - name: Verify source fix
-        run: |
-          grep -q 'resultsByStudent' app/page.tsx
-          grep -q 'const unsubscribeLegacy' app/page.tsx
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build site
-        run: npm run build
-
-      - name: Refresh deployed static files
-        run: |
-          cp -a out/. ./
-          touch .nojekyll
-
-      - name: Commit corrected tracker
-        run: |
+      - run: python scripts/fix-diagnostic-reader.py
+      - run: grep -q 'resultsByStudent' app/page.tsx
+      - run: npm ci
+      - run: npm run build
+      - run: cp -a out/. ./ && touch .nojekyll
+      - run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
-          git reset .github/workflows/apply-diagnostic-compat-fix.yml || true
-          if git diff --cached --quiet; then
-            echo 'No changes to commit.'
-          else
-            git commit -m 'Fix Diagnostic marks reader and rebuild tracker'
-            git push origin main
-          fi
+          git reset .github/workflows/apply-diagnostic-compat-fix.yml scripts/fix-diagnostic-reader.py
+          git commit -m 'Fix Diagnostic marks reader and rebuild tracker'
+          git push origin main
