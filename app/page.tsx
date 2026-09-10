@@ -202,30 +202,53 @@ export default function Home({
       return;
     }
     const grade = selected.grade;
-    const gradeRef = databaseRef(
+    const legacyRef = databaseRef(
       diagnosticDb,
       `teacherControlCenter/diagnosticByGrade/grade${grade}/results`,
     );
-    const unsubscribe = onValue(gradeRef, (snapshot) => {
-      const raw = snapshot.val() || {};
+    const currentRef = databaseRef(
+      diagnosticDb,
+      `teacherControlCenter/diagnosticByGrade/grade${grade}/resultsByStudent`,
+    );
+    let legacyRaw: Record<string, Record<string, DiagnosticResult>> = {};
+    let currentRaw: Record<string, Record<string, DiagnosticResult>> = {};
+    const rebuild = () => {
       const next: Record<string, DiagnosticResult> = {};
       const latestRank: Record<string, { time: number; key: string }> = {};
-      Object.values(raw).forEach((classResults) =>
-        Object.entries((classResults || {}) as Record<string, DiagnosticResult>).forEach(([resultKey, result]) => {
-          if (result?.studentId) {
-            const lookupKey = `${grade}:${String(result.studentId).trim()}`;
-            const rank = { time: diagnosticResultTime(result), key: resultKey };
-            const current = latestRank[lookupKey];
-            if (!current || rank.time > current.time || (rank.time === current.time && rank.key > current.key)) {
-              next[lookupKey] = result;
-              latestRank[lookupKey] = rank;
-            }
-          }
-        }),
+      const consider = (resultKey: string, result?: DiagnosticResult) => {
+        if (!result?.studentId) return;
+        const lookupKey = `${grade}:${String(result.studentId).trim()}`;
+        const rank = { time: diagnosticResultTime(result), key: resultKey };
+        const current = latestRank[lookupKey];
+        if (!current || rank.time > current.time || (rank.time === current.time && rank.key > current.key)) {
+          next[lookupKey] = result;
+          latestRank[lookupKey] = rank;
+        }
+      };
+      Object.entries(legacyRaw).forEach(([classKey, classResults]) =>
+        Object.entries(classResults || {}).forEach(([resultKey, result]) =>
+          consider(`legacy:${classKey}:${resultKey}`, result),
+        ),
+      );
+      Object.entries(currentRaw).forEach(([studentKey, levelResults]) =>
+        Object.entries(levelResults || {}).forEach(([levelKey, result]) =>
+          consider(`current:${studentKey}:${levelKey}`, result),
+        ),
       );
       setDiagnosticResults(next);
+    };
+    const unsubscribeLegacy = onValue(legacyRef, (snapshot) => {
+      legacyRaw = (snapshot.val() || {}) as Record<string, Record<string, DiagnosticResult>>;
+      rebuild();
     });
-    return unsubscribe;
+    const unsubscribeCurrent = onValue(currentRef, (snapshot) => {
+      currentRaw = (snapshot.val() || {}) as Record<string, Record<string, DiagnosticResult>>;
+      rebuild();
+    });
+    return () => {
+      unsubscribeLegacy();
+      unsubscribeCurrent();
+    };
   }, [selected?.grade]);
 
   const diagnosticFor=(student:Student)=>{const classroom=classes.find((item)=>item.id===student.classId);const grade=classroom?.grade;return grade?diagnosticResults[`${grade}:${student.studentId.trim()}`]:undefined};
