@@ -67,6 +67,14 @@ type DiagnosticResult = {
   updatedAt?: number | string;
   timestamp?: number | string;
 };
+type OnlineExamResult = {
+  studentId: string;
+  classId: string;
+  assessmentId: string;
+  score: number;
+  max: number;
+  completedAt?: number;
+};
 type TierName = "Tier 1" | "Tier 2" | "Tier 3";
 type SupportPlanSource = "diagnostic" | "ca";
 type TierStudent = { student: Student; total: number; diagnostic?: DiagnosticResult };
@@ -104,7 +112,10 @@ const planTypes: TestType[] = [
   "Speaking",
 ];
 const testTypes: TestType[] = [
-  ...planTypes,
+  "Reading",
+  "Writing",
+  "Spelling",
+  "Speaking",
   "Extra Credit Exam",
   "Bonus",
 ];
@@ -156,6 +167,7 @@ export default function Home({
     [scores, setScores] = useState<Score[]>([]),
     [comments, setComments] = useState<Comment[]>([]),
     [diagnosticResults, setDiagnosticResults] = useState<Record<string, DiagnosticResult>>({}),
+    [onlineExamResults, setOnlineExamResults] = useState<Record<string, OnlineExamResult>>({}),
     [diagnosticDetail, setDiagnosticDetail] = useState<{ student: Student; result?: DiagnosticResult } | null>(null),
     [selectedId, setSelectedId] = useState(""),
     [role, setRole] = useState<"admin" | "teacher">(
@@ -219,6 +231,21 @@ export default function Home({
   const diagnosticFor=(student:Student)=>{const classroom=classes.find((item)=>item.id===student.classId);const grade=classroom?.grade;return grade?diagnosticResults[`${grade}:${student.studentId.trim()}`]:undefined};
 
   useEffect(() => {
+    if (!selectedId) { setOnlineExamResults({}); return; }
+    const resultsRef = databaseRef(diagnosticDb, `examPlatform/resultsByAssessment/${selectedId}`);
+    return onValue(resultsRef, (snapshot) => {
+      const raw = (snapshot.val() || {}) as Record<string, Record<string, OnlineExamResult>>;
+      const next: Record<string, OnlineExamResult> = {};
+      Object.entries(raw).forEach(([assessmentId, studentResults]) =>
+        Object.values(studentResults || {}).forEach((result) => {
+          if (result?.studentId) next[`${assessmentId}:${result.studentId.trim()}`] = result;
+        }),
+      );
+      setOnlineExamResults(next);
+    });
+  }, [selectedId]);
+
+  useEffect(() => {
     if (!diagnosticDetail) return;
     const classroom = classes.find((item) => item.id === diagnosticDetail.student.classId);
     const grade = classroom?.grade;
@@ -253,7 +280,9 @@ export default function Home({
   }, [diagnosticDetail?.student.id, classes]);
 
 
-  const selectedStudents = students.filter((s) => s.classId === selectedId);
+  const selectedStudents = students
+    .filter((s) => s.classId === selectedId)
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
   const selectedTests = tests.filter((t) => t.classId === selectedId);
   const flash = (m: string) => {
     setMessage(m);
@@ -584,9 +613,14 @@ export default function Home({
       await deleteDoc(doc(db, "scores", id)).catch(() => {});
     } else await setDoc(doc(db, "scores", id), record);
   }
-  const scoreFor = (testId: string, studentId: string) =>
-    scores.find((s) => s.assessmentId === testId && s.studentId === studentId)
-      ?.value ?? "";
+  const onlineScoreFor = (testId: string, student: Student) =>
+    onlineExamResults[`${testId}:${student.studentId.trim()}`];
+  const scoreFor = (testId: string, studentId: string) => {
+    const student = students.find((item) => item.id === studentId);
+    const automatic = student ? onlineScoreFor(testId, student) : undefined;
+    if (automatic) return String(Math.round(automatic.score));
+    return scores.find((s) => s.assessmentId === testId && s.studentId === studentId)?.value ?? "";
+  };
   function isTargeted(test: Test, studentId: string) {
     return !test.targetStudentIds?.length || test.targetStudentIds.includes(studentId);
   }
@@ -1702,7 +1736,7 @@ export default function Home({
                             {selectedTests.map((t) => (
                               <td key={t.id}>
                                 {isTargeted(t, s.id) ? (
-                                  <input aria-label={`${s.name} ${t.title}`} type="number" min="0" max={t.max} value={scoreFor(t.id, s.id)} placeholder="—" disabled={!canEdit} onChange={(e) => void updateScore(t, s, e.target.value)} />
+                                  <input aria-label={`${s.name} ${t.title}`} title={onlineScoreFor(t.id, s) ? "Filled automatically from the online exam" : "Teacher-entered mark"} type="number" min="0" max={t.max} value={scoreFor(t.id, s.id)} placeholder="—" disabled={!canEdit || !!onlineScoreFor(t.id, s)} onChange={(e) => void updateScore(t, s, e.target.value)} />
                                 ) : (
                                   <span className="not-targeted">N/A</span>
                                 )}
