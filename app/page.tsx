@@ -670,7 +670,7 @@ export default function Home({
       const diagnostic = diagnosticFor(student);
       if (supportPlanSource === "diagnostic" && !diagnostic) return;
       if (supportPlanSource === "ca" && !hasContinuousAssessmentData(student.id)) return;
-      const total = supportPlanSource === "diagnostic" ? Number(diagnostic?.score || 0) : continuousTotal(student.id);
+      const total = supportPlanSource === "diagnostic" ? Math.round(Number(diagnostic?.score || 0)) : continuousTotal(student.id);
       const item: TierStudent = { student, total, diagnostic };
       if (total >= 90) next["Tier 1"].push(item);
       else if (total >= 61) next["Tier 2"].push(item);
@@ -1044,7 +1044,7 @@ export default function Home({
       return [
         s.studentId,
         s.name,
-        diagnostic?.score ?? "",
+        diagnostic ? Math.round(Number(diagnostic.score)) : "",
         ...regularTests.map((t) => {
           if (!isTargeted(t, s.id)) return "N/A";
           const v = scoreFor(t.id, s.id);
@@ -1742,7 +1742,7 @@ export default function Home({
                             </td>
                             <td className="diagnostic-cell">
                               {diagnosticFor(s) ? (
-                                <><b>{diagnosticFor(s)?.score}</b><small>/100</small></>
+                                <><b>{Math.round(Number(diagnosticFor(s)?.score ?? 0))}</b><small>/100</small></>
                               ) : (
                                 <span className="not-targeted">—</span>
                               )}
