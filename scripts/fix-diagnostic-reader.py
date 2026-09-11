@@ -132,4 +132,43 @@ if old_student_loader in text:
 elif new_student_loader not in text:
     raise SystemExit('Could not locate student snapshot loader')
 
+# Important: when a teacher signs in, sync IDs from ALL of that teacher's classes,
+# not only the currently selected class. This prevents Grades 11/12 (or any class
+# that was not manually opened) from being rejected by the Diagnostic join page.
+all_classes_marker = '  // Diagnostic ID registry sync: all teacher classes\n'
+if all_classes_marker not in text:
+    anchor = '\n\n  const selectedStudents = students\n'
+    effect = '''
+
+  // Diagnostic ID registry sync: all teacher classes
+  useEffect(() => {
+    if (!user || actingAsAdmin || classes.length === 0) return;
+    const stops = classes.map((classroom) =>
+      onSnapshot(
+        query(collection(db, "students"), where("classId", "==", classroom.id)),
+        (snapshot) => {
+          const rows = snapshot.docs.map(
+            (d) => ({ id: d.id, ...d.data() }) as Student,
+          );
+          void syncStudentIdRegistry(rows).catch((error) =>
+            console.warn(
+              `Unable to sync Diagnostic Student ID registry for class ${classroom.id}`,
+              error,
+            ),
+          );
+        },
+        (error) =>
+          console.warn(
+            `Unable to read students for Diagnostic ID sync in class ${classroom.id}`,
+            error,
+          ),
+      ),
+    );
+    return () => stops.forEach((stop) => stop());
+  }, [user, actingAsAdmin, classes]);
+'''
+    if anchor not in text:
+        raise SystemExit('Could not locate selectedStudents anchor')
+    text = text.replace(anchor, effect + anchor, 1)
+
 path.write_text(text, encoding='utf-8')
