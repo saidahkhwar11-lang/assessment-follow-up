@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'scripts/fix-diagnostic-reader.py'
+      - 'scripts/fix-admin-diagnostic-completion.py'
       - '.github/workflows/apply-diagnostic-compat-fix.yml'
 
 permissions:
@@ -19,7 +20,8 @@ jobs:
           node-version: '22'
           cache: npm
       - run: python scripts/fix-diagnostic-reader.py
-      - run: grep -q 'resultsByStudent' app/page.tsx
+      - run: python scripts/fix-admin-diagnostic-completion.py
+      - run: grep -q 'assessmentTracker/diagnosticByStudent' app/page.tsx
       - run: npm ci
       - run: npm run build
       - run: cp -a out/. ./ && touch .nojekyll
@@ -30,6 +32,6 @@ jobs:
           if git diff --cached --quiet; then
             echo 'No deployment changes to commit.'
           else
-            git commit -m 'Fix Diagnostic marks reader and rebuild tracker'
+            git commit -m 'Fix Admin Diagnostic completion and rebuild tracker'
             git push origin main
           fi
