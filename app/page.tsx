@@ -21,7 +21,7 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { auth, coordinatorEmail, db, diagnosticDb } from "./firebase";
-import { onValue, ref as databaseRef } from "firebase/database";
+import { onValue, ref as databaseRef, set as databaseSet } from "firebase/database";
 
 type TestType =
   | "Diagnostic"
@@ -143,6 +143,26 @@ const gradeLevels = [
   "Grade 12 G",
 ] as const;
 const cleanEmail = (v: string) => v.trim().toLowerCase();
+const studentIdRegistryHash = async (studentId: string) => {
+  const bytes = new TextEncoder().encode(studentId.trim());
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (b) =>
+    b.toString(16).padStart(2, "0"),
+  ).join("");
+};
+const syncStudentIdRegistry = async (rows: Student[]) => {
+  await Promise.all(
+    rows
+      .filter((student) => student.studentId?.trim())
+      .map(async (student) => {
+        const hash = await studentIdRegistryHash(student.studentId);
+        await databaseSet(
+          databaseRef(diagnosticDb, `assessmentTracker/studentIdRegistry/${hash}`),
+          true,
+        );
+      }),
+  );
+};
 const classGradeLevel = (classroom: ClassRoom) => {
   if (classroom.gradeLevel) return classroom.gradeLevel;
   if (classroom.grade <= 8) return `Grade ${classroom.grade}`;
@@ -388,9 +408,13 @@ export default function Home({
       stops: Array<() => void> = [];
 
     stops.push(
-      onSnapshot(actingAsAdmin ? collection(db, "students") : classSource("students"), (s) =>
-        setStudents(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Student)),
-      ),
+      onSnapshot(actingAsAdmin ? collection(db, "students") : classSource("students"), (s) => {
+        const rows = s.docs.map((d) => ({ id: d.id, ...d.data() }) as Student);
+        setStudents(rows);
+        void syncStudentIdRegistry(rows).catch((error) =>
+          console.warn("Unable to sync Diagnostic Student ID registry", error),
+        );
+      }),
       onSnapshot(actingAsAdmin ? collection(db, "assessments") : classSource("assessments"), (s) =>
         setTests(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Test)),
       ),
