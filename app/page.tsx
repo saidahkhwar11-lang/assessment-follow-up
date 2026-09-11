@@ -323,6 +323,34 @@ export default function Home({
   }, [diagnosticDetail?.student.id, classes]);
 
 
+  // Diagnostic ID registry sync: all teacher classes
+  useEffect(() => {
+    if (!user || actingAsAdmin || classes.length === 0) return;
+    const stops = classes.map((classroom) =>
+      onSnapshot(
+        query(collection(db, "students"), where("classId", "==", classroom.id)),
+        (snapshot) => {
+          const rows = snapshot.docs.map(
+            (d) => ({ id: d.id, ...d.data() }) as Student,
+          );
+          void syncStudentIdRegistry(rows).catch((error) =>
+            console.warn(
+              `Unable to sync Diagnostic Student ID registry for class ${classroom.id}`,
+              error,
+            ),
+          );
+        },
+        (error) =>
+          console.warn(
+            `Unable to read students for Diagnostic ID sync in class ${classroom.id}`,
+            error,
+          ),
+      ),
+    );
+    return () => stops.forEach((stop) => stop());
+  }, [user, actingAsAdmin, classes]);
+
+
   const selectedStudents = students
     .filter((s) => s.classId === selectedId)
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
