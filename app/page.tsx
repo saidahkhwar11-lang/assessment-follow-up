@@ -187,6 +187,7 @@ export default function Home({
     [scores, setScores] = useState<Score[]>([]),
     [comments, setComments] = useState<Comment[]>([]),
     [diagnosticResults, setDiagnosticResults] = useState<Record<string, DiagnosticResult>>({}),
+    [adminDiagnosticResults, setAdminDiagnosticResults] = useState<Record<string, DiagnosticResult>>({}),
     [onlineExamResults, setOnlineExamResults] = useState<Record<string, OnlineExamResult>>({}),
     [diagnosticDetail, setDiagnosticDetail] = useState<{ student: Student; result?: DiagnosticResult } | null>(null),
     [selectedId, setSelectedId] = useState(""),
@@ -270,6 +271,39 @@ export default function Home({
       unsubscribeCurrent();
     };
   }, [selected?.grade]);
+
+
+  // Admin overview Diagnostic completion reader
+  useEffect(() => {
+    if (!actingAsAdmin) {
+      setAdminDiagnosticResults({});
+      return;
+    }
+    const resultsRef = databaseRef(diagnosticDb, `assessmentTracker/diagnosticByStudent`);
+    return onValue(resultsRef, (snapshot) => {
+      const raw = (snapshot.val() || {}) as Record<string, Record<string, Record<string, DiagnosticResult>>>;
+      const next: Record<string, DiagnosticResult> = {};
+      const latestRank: Record<string, { time: number; key: string }> = {};
+      Object.entries(raw).forEach(([studentKey, gradeRows]) =>
+        Object.entries(gradeRows || {}).forEach(([gradeKey, levelRows]) => {
+          const match = String(gradeKey).match(/grade(\d+)/i);
+          const grade = match ? Number(match[1]) : 0;
+          if (!grade) return;
+          Object.entries(levelRows || {}).forEach(([levelKey, result]) => {
+            if (!result?.studentId) return;
+            const lookupKey = `${grade}:${String(result.studentId).trim()}`;
+            const rank = { time: diagnosticResultTime(result), key: `${studentKey}:${gradeKey}:${levelKey}` };
+            const current = latestRank[lookupKey];
+            if (!current || rank.time > current.time || (rank.time === current.time && rank.key > current.key)) {
+              next[lookupKey] = result;
+              latestRank[lookupKey] = rank;
+            }
+          });
+        }),
+      );
+      setAdminDiagnosticResults(next);
+    });
+  }, [actingAsAdmin]);
 
   const diagnosticFor=(student:Student)=>{const classroom=classes.find((item)=>item.id===student.classId);const grade=classroom?.grade;return grade?diagnosticResults[`${grade}:${student.studentId.trim()}`]:undefined};
 
@@ -1227,6 +1261,17 @@ export default function Home({
     }
   }
 
+  const adminDiagnosticComplete = (classroom: ClassRoom) =>
+    students
+      .filter((student) => student.classId === classroom.id)
+      .some((student) =>
+        Boolean(adminDiagnosticResults[`${classroom.grade}:${student.studentId.trim()}`]),
+      );
+  const adminAssessmentCount = (classroom: ClassRoom, type: TestType) =>
+    type === "Diagnostic"
+      ? (adminDiagnosticComplete(classroom) ? 1 : 0)
+      : tests.filter((test) => test.classId === classroom.id && test.type === type).length;
+
   const totalRequired = Object.values(plan).reduce((a, b) => a + b, 0);
   const summary = useMemo(() => {
     const completed = classes.reduce(
@@ -1237,7 +1282,7 @@ export default function Home({
               x +
               Math.min(
                 plan[t],
-                tests.filter((v) => v.classId === c.id && v.type === t).length,
+                adminAssessmentCount(c, t),
               ),
             0,
           ),
@@ -1249,7 +1294,7 @@ export default function Home({
       required,
       rate: required ? Math.round((completed / required) * 100) : 0,
     };
-  }, [classes, tests]);
+  }, [classes, tests, students, adminDiagnosticResults]);
 
   if (authLoading)
     return (
@@ -1469,8 +1514,7 @@ export default function Home({
                   classes.filter((c) =>
                     planTypes.some(
                       (t) =>
-                        tests.filter((x) => x.classId === c.id && x.type === t)
-                          .length < plan[t],
+                        adminAssessmentCount(c, t) < plan[t],
                     ),
                   ).length
                 }
@@ -1546,9 +1590,7 @@ export default function Home({
                           n +
                           Math.min(
                             plan[t],
-                            tests.filter(
-                              (x) => x.classId === c.id && x.type === t,
-                            ).length,
+                            adminAssessmentCount(c, t),
                           ),
                         0,
                       );
@@ -1563,9 +1605,7 @@ export default function Home({
                             <small>{c.teacherEmail}</small>
                           </td>
                           {planTypes.map((t) => {
-                            const n = tests.filter(
-                              (x) => x.classId === c.id && x.type === t,
-                            ).length;
+                            const n = adminAssessmentCount(c, t);
                             return (
                               <td key={t}>
                                 <span
