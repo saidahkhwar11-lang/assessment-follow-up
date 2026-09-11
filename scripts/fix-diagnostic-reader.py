@@ -75,8 +75,61 @@ replacements = {
 }
 
 for old, new in replacements.items():
-    if old not in text:
+    if old in text:
+        text = text.replace(old, new)
+    elif new not in text:
         raise SystemExit(f'Could not locate rounding target: {old}')
-    text = text.replace(old, new)
+
+# Maintain the private hashed Student ID registry used by the Diagnostic website.
+# The registry stores only SHA-256 hashes (not names, class, grade, or raw IDs).
+if 'set as databaseSet' not in text:
+    old_import = 'import { onValue, ref as databaseRef } from "firebase/database";'
+    new_import = 'import { onValue, ref as databaseRef, set as databaseSet } from "firebase/database";'
+    if old_import not in text:
+        raise SystemExit('Could not locate Firebase Database import')
+    text = text.replace(old_import, new_import, 1)
+
+if 'const syncStudentIdRegistry = async' not in text:
+    anchor = 'const cleanEmail = (v: string) => v.trim().toLowerCase();\n'
+    helper = '''const cleanEmail = (v: string) => v.trim().toLowerCase();
+const studentIdRegistryHash = async (studentId: string) => {
+  const bytes = new TextEncoder().encode(studentId.trim());
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (b) =>
+    b.toString(16).padStart(2, "0"),
+  ).join("");
+};
+const syncStudentIdRegistry = async (rows: Student[]) => {
+  await Promise.all(
+    rows
+      .filter((student) => student.studentId?.trim())
+      .map(async (student) => {
+        const hash = await studentIdRegistryHash(student.studentId);
+        await databaseSet(
+          databaseRef(diagnosticDb, `assessmentTracker/studentIdRegistry/${hash}`),
+          true,
+        );
+      }),
+  );
+};
+'''
+    if anchor not in text:
+        raise SystemExit('Could not locate cleanEmail anchor')
+    text = text.replace(anchor, helper, 1)
+
+old_student_loader = '''      onSnapshot(actingAsAdmin ? collection(db, "students") : classSource("students"), (s) =>
+        setStudents(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Student)),
+      ),'''
+new_student_loader = '''      onSnapshot(actingAsAdmin ? collection(db, "students") : classSource("students"), (s) => {
+        const rows = s.docs.map((d) => ({ id: d.id, ...d.data() }) as Student);
+        setStudents(rows);
+        void syncStudentIdRegistry(rows).catch((error) =>
+          console.warn("Unable to sync Diagnostic Student ID registry", error),
+        );
+      }),'''
+if old_student_loader in text:
+    text = text.replace(old_student_loader, new_student_loader, 1)
+elif new_student_loader not in text:
+    raise SystemExit('Could not locate student snapshot loader')
 
 path.write_text(text, encoding='utf-8')
