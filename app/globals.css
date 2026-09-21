@@ -435,25 +435,27 @@ td small {
   margin-left: 5px;
 }
 .marks th:nth-child(n + 3) {
-  min-width: 150px;
+  min-width: 112px;
 }
+.marks th { padding: 8px 7px; }
+.marks td { padding: 9px 7px; }
 .marks th:first-child,
 .marks td:first-child {
   position: sticky;
   left: 0;
-  width: 145px;
-  min-width: 145px;
-  max-width: 145px;
+  width: 112px;
+  min-width: 112px;
+  max-width: 112px;
   z-index: 3;
   background: #fff;
 }
 .marks th:nth-child(2),
 .marks td:nth-child(2) {
   position: sticky;
-  left: 145px;
-  width: 230px;
-  min-width: 230px;
-  max-width: 230px;
+  left: 112px;
+  width: 185px;
+  min-width: 185px;
+  max-width: 185px;
   z-index: 3;
   background: #fff;
   box-shadow: 8px 0 12px -12px #173f6e99;
@@ -489,13 +491,20 @@ td small {
   font-weight: 500;
 }
 .marks input {
-  width: 72px;
-  padding: 8px;
+  width: 58px;
+  padding: 7px 5px;
   border: 1px solid #d9e2ed;
   border-radius: 8px;
   font-weight: 800;
   color: var(--navy);
   text-align: center;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+.marks input[type="number"]::-webkit-inner-spin-button,
+.marks input[type="number"]::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
 }
 .marks input:focus {
   outline: 2px solid #92bce9;
@@ -510,8 +519,8 @@ td small {
   font-size: 11px;
   font-weight: 800;
 }
-.test-actions{display:flex;gap:8px;margin-top:7px}.test-actions button,.row-actions button{border:0;background:transparent;padding:0;color:#246bb7;font-size:10px;font-weight:900;cursor:pointer}.danger-link{color:#bd4f42!important}.row-actions{white-space:nowrap}.row-actions button+button{margin-left:9px}.total-head{min-width:150px;background:#edf7f2!important;color:#176d51!important}.total-head small{display:block;text-transform:none;letter-spacing:0;margin-top:4px}.total-cell{background:#f3faf6;color:#176d51;text-align:center}.total-cell b{font-size:17px}.total-cell small{display:inline;margin-left:3px;color:#5d8d7c}
-.weighting-note{margin:0 24px 16px;padding:12px 14px;border:1px solid #cfe7dc;border-radius:12px;background:#f3faf6;color:#245e4d;font-size:12px;line-height:1.5}.weighting-note span{display:block;color:#527568}.skill-group-head{min-width:150px!important;background:#dfeef9!important;color:#174f7c!important;text-align:center!important;border-left:2px solid #b8d2e6!important;font-size:13px!important}.skill-group-head small{display:inline!important;margin-left:5px!important;color:#2171aa!important;font-size:11px!important;font-weight:900!important}.marks .assessment-head-row th{position:static!important;left:auto!important;width:auto!important;min-width:150px!important;max-width:none!important;background:#f4f8fb!important;text-align:center;box-shadow:none!important}.empty-assessment-head small{font-style:italic;color:#8a95a3}.empty-assessment-cell{text-align:center;background:#fafbfc}
+.test-actions{display:flex;gap:6px;margin-top:5px}.test-actions button,.row-actions button{border:0;background:transparent;padding:0;color:#246bb7;font-size:9px;font-weight:900;cursor:pointer}.danger-link{color:#bd4f42!important}.row-actions{white-space:nowrap}.row-actions button+button{margin-left:9px}.total-head{min-width:112px!important;background:#edf7f2!important;color:#176d51!important}.total-head small{display:block;text-transform:none;letter-spacing:0;margin-top:4px}.total-cell{background:#f3faf6;color:#176d51;text-align:center}.total-cell b{font-size:17px}.total-cell small{display:inline;margin-left:3px;color:#5d8d7c}
+.weighting-note{margin:0 24px 12px;padding:9px 12px;border:1px solid #cfe7dc;border-radius:10px;background:#f3faf6;color:#245e4d;font-size:11px;line-height:1.4}.weighting-note span{display:block;color:#527568}.skill-group-head{min-width:112px!important;background:#dfeef9!important;color:#174f7c!important;text-align:center!important;border-left:2px solid #b8d2e6!important;font-size:12px!important;padding:8px 6px!important}.skill-group-head small{display:inline!important;margin-left:4px!important;color:#2171aa!important;font-size:10px!important;font-weight:900!important}.marks .assessment-head-row th{position:static!important;left:auto!important;width:auto!important;min-width:112px!important;max-width:none!important;padding:8px 6px!important;background:#f4f8fb!important;text-align:center;box-shadow:none!important}.empty-assessment-head small{font-style:italic;color:#8a95a3}.empty-assessment-cell{text-align:center;background:#fafbfc}
 .mono {
   font-family: ui-monospace, monospace;
   color: #53647b;
