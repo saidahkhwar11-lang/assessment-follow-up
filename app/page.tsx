@@ -38,7 +38,7 @@ type ContinuousCategory =
   | "Writing"
   | "Speaking"
   | "Listening"
-  | "Teacher's Choice";
+  | "Coursework";
 type ClassRoom = {
   id: string;
   grade: number;
@@ -145,12 +145,12 @@ const continuousWeights: Record<ContinuousCategory, number> = {
   Writing: 15,
   Speaking: 10,
   Listening: 10,
-  "Teacher's Choice": 15,
+  Coursework: 15,
 };
 const continuousCategories = Object.keys(continuousWeights) as ContinuousCategory[];
 const continuousCategoryFor = (type: TestType): ContinuousCategory | null => {
   if (type === "Diagnostic") return null;
-  if (type === "Extra Credit Exam" || type === "Bonus") return "Teacher's Choice";
+  if (type === "Extra Credit Exam" || type === "Bonus") return "Coursework";
   return type;
 };
 const gradeLevels = [
@@ -1807,8 +1807,8 @@ export default function Home({
                   )}
                 </div>
                 <div className="weighting-note">
-                  <b>Weighted CA:</b> Spelling 25% · Reading 25% · Writing 15% · Speaking 10% · Listening 10% · Teacher&apos;s Choice 15%.
-                  <span>Teacher&apos;s Choice combines Extra Credit Exam and Bonus. Existing marks are unchanged.</span>
+                  <b>Weighted CA:</b> Spelling 25% · Reading 25% · Writing 15% · Speaking 10% · Listening 10% · Coursework 15%.
+                  <span>Coursework combines Extra Credit Exam and Bonus. Existing marks are unchanged.</span>
                 </div>
                 {canEdit && (
                   <div className="add-test">
@@ -1919,7 +1919,7 @@ export default function Home({
                           }
                           return categoryTests.map((t) => (
                             <th key={t.id}>
-                              {category === "Teacher's Choice" && <span className="test-label">{t.type}</span>}
+                              {category === "Coursework" && <span className="test-label">{t.type}</span>}
                               <b>{t.title}</b>
                               <small>{t.date} · /{t.max}</small>
                               {!!t.targetStudentIds?.length && (
