@@ -902,53 +902,15 @@ export default function Home({
         document.getElementById("result").innerHTML='<div class="notice"><b>Diagnostic → Diagnostic:</b> The current tracker exposes the latest linked Diagnostic result for each Student ID. A second historical Diagnostic result is not available in this read-only tracker view, so no progress judgement is generated rather than inventing a comparison.</div>';
       }
     </script></body></html>`;
-    const win=window.open("","_blank");
-    if(!win){flash("Please allow pop-ups to open the analysis page.");return}
-    win.document.open();win.document.write(html);win.document.close();
-    // Bind controls from the parent page as well as the generated page's inline handlers.
-    // This keeps the analysis controls working even when a browser blocks script created by document.write.
-    const d = win.document;
-    const byId = (id: string) => d.getElementById(id) as HTMLSelectElement | HTMLElement | null;
-    const toggleAnalysisControls = () => {
-      const att = byId("attType") as HTMLSelectElement | null;
-      const prog = byId("progType") as HTMLSelectElement | null;
-      byId("attAssessmentWrap")?.classList.toggle("hidden", att?.value !== "assessment");
-      byId("diagDiagWrap")?.classList.toggle("hidden", prog?.value !== "diagdiag");
-      byId("skillWrap")?.classList.toggle("hidden", prog?.value !== "skill");
-    };
-    (byId("attType") as HTMLSelectElement | null)?.addEventListener("change", toggleAnalysisControls);
-    (byId("progType") as HTMLSelectElement | null)?.addEventListener("change", toggleAnalysisControls);
-    toggleAnalysisControls();
-
-    // The generated window can display inline script but some browsers do not execute it.
-    // Re-evaluate that script explicitly, then replace inline button handlers with direct listeners.
-    try {
-      const scriptText = Array.from(d.scripts).map((s) => s.textContent || "").join("\n");
-      if (scriptText.trim()) win.eval(scriptText);
-    } catch (error) {
-      console.error("Analysis script initialization failed", error);
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const analysisUrl = URL.createObjectURL(blob);
+    const win = window.open(analysisUrl, "_blank");
+    if (!win) {
+      URL.revokeObjectURL(analysisUrl);
+      flash("Please allow pop-ups to open the analysis page.");
+      return;
     }
-    const buttons = Array.from(d.querySelectorAll("button")) as HTMLButtonElement[];
-    const attainmentButton = buttons.find((button) => button.textContent?.includes("Generate Attainment Analysis"));
-    const progressButton = buttons.find((button) => button.textContent?.includes("Generate Progress Analysis"));
-    attainmentButton?.removeAttribute("onclick");
-    progressButton?.removeAttribute("onclick");
-    attainmentButton?.addEventListener("click", () => {
-      const runner = (win as unknown as { runAttainment?: () => void }).runAttainment;
-      if (typeof runner === "function") runner();
-      else {
-        const result = d.getElementById("result");
-        if (result) result.innerHTML = '<div class="notice"><b>Analysis could not initialize.</b> Please close this page and reopen Attainment & Progress from the tracker.</div>';
-      }
-    });
-    progressButton?.addEventListener("click", () => {
-      const runner = (win as unknown as { runProgress?: () => void }).runProgress;
-      if (typeof runner === "function") runner();
-      else {
-        const result = d.getElementById("result");
-        if (result) result.innerHTML = '<div class="notice"><b>Analysis could not initialize.</b> Please close this page and reopen Attainment & Progress from the tracker.</div>';
-      }
-    });
+    window.setTimeout(() => URL.revokeObjectURL(analysisUrl), 60000);
   }
 
   function extractStudentLevels() {
