@@ -802,66 +802,77 @@ export default function Home({
   function openAttainmentProgressAnalysis() {
     if (!selected) return;
 
-    const analysed = selectedStudents
-      .map((student) => {
-        const diagnostic = diagnosticFor(student);
-        if (!diagnostic) return null;
-        const baseline = Math.round(Number(diagnostic.score || 0));
-        const hasCA = hasContinuousAssessmentData(student.id);
-        const ca = hasCA ? continuousTotal(student.id) : null;
-        const level = baseline >= 70 ? "Above expectations" : baseline >= 50 ? "In line with expectations" : "Below expectations";
-        const progress = ca === null ? null : ca - baseline;
-        return { student, diagnostic, baseline, ca, level, progress };
-      })
-      .filter(Boolean) as Array<{ student: Student; diagnostic: DiagnosticResult; baseline: number; ca: number | null; level: string; progress: number | null }>;
-
-    if (!analysed.length) {
-      flash("No linked Diagnostic results are available for this class yet.");
-      return;
-    }
-
-    const above = analysed.filter((x) => x.baseline >= 70).length;
-    const inLine = analysed.filter((x) => x.baseline >= 50 && x.baseline < 70).length;
-    const below = analysed.filter((x) => x.baseline < 50).length;
-    const atOrAbove = above + inLine;
-    const pct = (n: number) => Math.round((n / analysed.length) * 100);
-    const abovePct = pct(above), inLinePct = pct(inLine), belowPct = pct(below), atOrAbovePct = pct(atOrAbove);
-    const judgement = atOrAbovePct >= 75 ? "Acceptable or better" : "Weak";
-    const progressRows = analysed.filter((x) => x.ca !== null);
-    const improved = progressRows.filter((x) => Number(x.progress) > 0).length;
-    const maintained = progressRows.filter((x) => Number(x.progress) === 0).length;
-    const declined = progressRows.filter((x) => Number(x.progress) < 0).length;
-
-    const skillGroups = [
-      ["Grammar", 25, (d: DiagnosticResult) => Number(d.skills?.Grammar ?? 0), "Accuracy with grammar structures and sentence formation.", "10-minute Sentence Repair: model one target rule, then students correct and rebuild five short sentences.", "Mini-whiteboards, sentence cards and an exit slip."],
-      ["Vocabulary", 25, (d: DiagnosticResult) => Number(d.skills?.Vocabulary ?? 0), "Word meaning, recognition and accurate use.", "10-minute Word Connect: match key words to meanings or pictures, then use four words in meaningful sentences.", "Word cards, picture/meaning cards and notebooks."],
-      ["Context Clues", 20, (d: DiagnosticResult) => Number(d.skills?.Context ?? 0), "Using nearby clues to determine meaning.", "10-minute Clue Hunt: highlight clue words, select the meaning and explain which clue helped.", "Short context sentences, highlighters and an exit slip."],
-      ["Reading", 30, (d: DiagnosticResult) => Number(d.skills?.Reading ?? 0), "Main idea, details, inference and text evidence.", "12-minute Read–Mark–Answer: chunk a short text, underline evidence, then answer main-idea, detail and inference questions.", "One short level-appropriate text, highlighters and question cards."],
-    ] as const;
-
     const esc = (v: unknown) => String(v ?? "").replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch] || ch));
-    const rows = analysed.map((x) => `<tr><td>${esc(x.student.studentId)}</td><td><b>${esc(x.student.name)}</b></td><td>${x.baseline}%</td><td><span class="pill ${x.baseline>=70?"green":x.baseline>=50?"yellow":"red"}">${esc(x.level)}</span></td><td>${x.ca===null?"—":x.ca+"%"}</td><td>${x.progress===null?"Not available":(x.progress>0?"+":"")+x.progress+" pts"}</td></tr>`).join("");
-    const supports = skillGroups.map(([name,max,getScore,need,activity,materials]) => {
-      const group = analysed.filter((x) => getScore(x.diagnostic) / max < .5);
-      if (!group.length) return "";
-      return `<section class="card support"><div class="support-head"><div><h2>${name} Support</h2><small>Below 50% in this diagnostic skill</small></div><b>${group.length} students</b></div><div class="chips">${group.map((x)=>`<span>${esc(x.student.name)} · ${getScore(x.diagnostic)}/${max}</span>`).join("")}</div><div class="support-grid"><div><strong>FOCUS, ACTIVITY & MATERIALS</strong><p><b>Common learning need:</b> ${need}</p><p><b>Focused activity:</b> ${activity}</p><p><b>Materials:</b> ${materials}</p></div><div><strong>CHECK & FOLLOW-UP</strong><p><b>Success check:</b> At least 80% accuracy in the focused check.</p><p><b>Follow-up:</b> Recheck the same focus in the next lesson and later curriculum-aligned assessment.</p></div></div></section>`;
+    const diagnosticRows = selectedStudents.map((student) => ({ student, result: diagnosticFor(student) })).filter((x) => !!x.result) as Array<{student: Student; result: DiagnosticResult}>;
+    const caRows = selectedStudents.filter((student) => hasContinuousAssessmentData(student.id)).map((student) => ({ student, value: continuousTotal(student.id) }));
+    const assessmentOptions = selectedTests.filter((test) => test.type !== "Diagnostic");
+    const diagnosticSkillOptions = [
+      { key: "Grammar", label: "Diagnostic · Grammar", max: 25 },
+      { key: "Vocabulary", label: "Diagnostic · Vocabulary", max: 25 },
+      { key: "Context", label: "Diagnostic · Context Clues", max: 20 },
+      { key: "Reading", label: "Diagnostic · Reading", max: 30 },
+    ];
+
+    const assessmentOptionsHtml = assessmentOptions.map((test) => `<option value="test:${esc(test.id)}">${esc(test.type)} · ${esc(test.title)} · /${test.max}</option>`).join("");
+    const diagnosticSkillHtml = diagnosticSkillOptions.map((x) => `<option value="diagSkill:${x.key}">${x.label}</option>`).join("");
+    const sameSkillPairs = continuousCategories.map((category) => {
+      const tests = testsForCategory(category);
+      if (tests.length < 2) return "";
+      return `<optgroup label="${category}">${tests.map((a) => tests.filter((b)=>b.id!==a.id).map((b)=>`<option value="${esc(a.id)}|${esc(b.id)}">${esc(a.title)} → ${esc(b.title)}</option>`).join("")).join("")}</optgroup>`;
     }).join("");
 
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Student Attainment & Progress Analysis</title><style>
-      *{box-sizing:border-box}body{margin:0;background:#f4f8fa;color:#173650;font:14px Arial,sans-serif}.page{max-width:1100px;margin:auto;padding:28px}.top{display:flex;justify-content:space-between;align-items:center;gap:16px}.back{border:0;background:#17365d;color:white;padding:10px 16px;border-radius:9px;font-weight:700;cursor:pointer}.school{text-align:center}.school small{color:#64748b}.school h1{font-size:30px;margin:5px 0}.rule{height:3px;background:#159a91;margin:22px 0}.notice,.card{background:white;border:1px solid #d7e1e7;border-radius:8px;padding:18px;margin:14px 0}.notice{background:#fffdf5}.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}.stat{background:white;border:1px solid #d7e1e7;border-radius:8px;padding:16px}.stat span{display:block;color:#64748b;font-weight:700}.stat b{display:block;font-size:27px;margin-top:8px}.bar{height:24px;border-radius:20px;overflow:hidden;display:flex;background:#eee}.bar i{display:block;height:100%}.green-bg{background:#15955b}.yellow-bg{background:#f1c644}.red-bg{background:#d64d4d}h2{margin:0 0 12px}table{width:100%;border-collapse:collapse}th,td{padding:10px;border-bottom:1px solid #dbe4e8;text-align:left}th{background:#eaf3f6}.pill{display:inline-block;padding:5px 10px;border-radius:18px;font-weight:700}.green{background:#15955b;color:white}.yellow{background:#f1c644;color:#3b3420}.red{background:#d64d4d;color:white}.analysis{border-left:4px solid #159a91;padding-left:14px}.support-head{display:flex;justify-content:space-between;background:#eaf5f4;margin:-18px -18px 14px;padding:14px 18px}.support-head b{background:#159a91;color:white;border-radius:18px;padding:7px 12px}.chips{display:flex;flex-wrap:wrap;gap:6px}.chips span{border:1px solid #d4dde2;border-radius:16px;padding:5px 9px;font-weight:700}.support-grid{display:grid;grid-template-columns:2fr 1fr;gap:25px;border-top:1px solid #d7e1e7;margin-top:14px;padding-top:14px}.support-grid strong{font-size:12px;letter-spacing:1px;color:#64748b}.progress-box{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.progress-box div{background:#f7fafc;padding:14px;border-radius:8px;text-align:center}.progress-box b{display:block;font-size:22px}@media(max-width:800px){.stats,.progress-box{grid-template-columns:1fr 1fr}.support-grid{grid-template-columns:1fr}.page{padding:14px}}@media print{body{background:white}.back{display:none}.page{max-width:none;padding:8mm}.card,.notice{break-inside:avoid}}
-    </style></head><body><div class="page"><div class="top"><button class="back" onclick="window.close();history.back()">← Back to Tracker</button><div class="school"><small>Al Reyadah School · English Department</small><h1>Student Attainment & Progress Analysis</h1><small>Read-only analysis based on the current Assessment Tracker evidence.</small></div><button class="back" onclick="window.print()">Print / Save PDF</button></div><div class="rule"></div>
-    <div class="notice"><b>Diagnostic baseline judgement.</b> This describes attainment at the starting point. Progress is shown only where a later CA result is available for comparison.</div>
-    <div class="stats"><div class="stat"><span>Students analysed</span><b>${analysed.length}</b></div><div class="stat"><span>Above expectations</span><b>${abovePct}%</b></div><div class="stat"><span>In line</span><b>${inLinePct}%</b></div><div class="stat"><span>At or above</span><b>${atOrAbovePct}%</b></div><div class="stat"><span>Baseline judgement</span><b>${judgement}</b></div></div>
-    <section class="card"><h2>${esc(classGradeLevel(selected))} · ${esc(selected.section)}</h2><p>Diagnostic starting-point attainment</p><div class="bar"><i class="green-bg" style="width:${abovePct}%"></i><i class="yellow-bg" style="width:${inLinePct}%"></i><i class="red-bg" style="width:${belowPct}%"></i></div><p><b>${abovePct}%</b> Above (70%+) &nbsp; <b>${inLinePct}%</b> In line (50–69%) &nbsp; <b>${belowPct}%</b> Below (&lt;50%)</p></section>
-    <section class="card"><h2>Diagnostic Analysis</h2><p class="analysis"><b>${atOrAbovePct}%</b> of students attained levels at or above the curriculum standard, while <b>${belowPct}%</b> were below it. The diagnostic baseline is judged as <b>${judgement}</b>. The results indicate a need to identify learning gaps, provide targeted support and appropriate challenge.</p></section>
-    <section class="card"><h2>Progress Analysis</h2>${progressRows.length?`<div class="progress-box"><div><span>Students compared</span><b>${progressRows.length}</b></div><div><span>Improved</span><b>${improved}</b></div><div><span>Maintained</span><b>${maintained}</b></div><div><span>Lower than baseline</span><b>${declined}</b></div></div><p class="analysis">Progress compares each student's Diagnostic baseline with her current weighted CA total. It does not overwrite either result.</p>`:`<p class="analysis"><b>Progress is not judged yet.</b> A later CA result is required before progress can be compared with the Diagnostic baseline.</p>`}</section>
-    <section class="card"><h2>Student starting-point & progress profile</h2><table><thead><tr><th>Student ID</th><th>Student name</th><th>Baseline</th><th>Starting level</th><th>Current CA</th><th>Change</th></tr></thead><tbody>${rows}</tbody></table></section>
-    <section class="card"><h2>Recommendations to Improve Progress</h2><div class="analysis"><p><b>${below}</b> students (${belowPct}%) are currently below curriculum expectations.</p><ol><li>Review assessment responses by skill to identify exact learning gaps.</li><li>Group students according to common needs and provide short, focused reteaching.</li><li>Set a clear next target using the current result as evidence.</li><li>Differentiate classroom tasks for support and challenge.</li><li>Check progress regularly through formative assessment and later curriculum-aligned assessment.</li></ol></div></section>
-    <h2 style="margin-top:24px">Intervention Groups by Common Need</h2><p>Students scoring below 50% in a Diagnostic skill are included in its support group. A student may appear in more than one group.</p>${supports}
-    </div></body></html>`;
-    const win = window.open("", "_blank");
-    if (!win) { flash("Please allow pop-ups to open the analysis page."); return; }
-    win.document.open(); win.document.write(html); win.document.close();
+      *{box-sizing:border-box}body{margin:0;background:#f4f8fa;color:#173650;font:14px Arial,sans-serif}.page{max-width:1120px;margin:auto;padding:28px}.top{display:flex;justify-content:space-between;align-items:center;gap:18px}.school{text-align:center;flex:1}.school small{color:#64748b}.school h1{font-size:30px;margin:5px 0}.btn{border:0;background:#17365d;color:#fff;padding:11px 16px;border-radius:9px;font-weight:700;cursor:pointer}.rule{height:3px;background:#159a91;margin:22px 0}.chooser{display:grid;grid-template-columns:1fr 1fr;gap:16px}.card{background:#fff;border:1px solid #d7e1e7;border-radius:10px;padding:18px;margin:14px 0}.choice{border:2px solid #dbe5eb}.choice h2{margin:0 0 6px}.choice p{color:#64748b}.choice label{display:block;font-weight:700;margin:12px 0 5px}.choice select{width:100%;padding:11px;border:1px solid #bdcbd5;border-radius:8px;background:#fff}.choice button{margin-top:14px;width:100%;background:#2176bd}.hidden{display:none}.notice{background:#fffdf5;border:1px solid #eadfbd;border-radius:8px;padding:14px}.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}.stat{background:#fff;border:1px solid #d7e1e7;border-radius:8px;padding:15px}.stat span{display:block;color:#64748b;font-weight:700}.stat b{display:block;font-size:25px;margin-top:7px}.bar{height:22px;border-radius:18px;overflow:hidden;display:flex;background:#eee}.bar i{height:100%;display:block}.g{background:#15955b}.y{background:#f1c644}.r{background:#d64d4d}.analysis{border-left:4px solid #159a91;padding-left:14px}table{width:100%;border-collapse:collapse}th,td{padding:10px;border-bottom:1px solid #dbe4e8;text-align:left}th{background:#eaf3f6}.pill{display:inline-block;padding:5px 9px;border-radius:16px;font-weight:700;color:#fff}.pill.g{background:#15955b}.pill.y{background:#d7a914;color:#302b18}.pill.r{background:#d64d4d}.pos{color:#15803d;font-weight:700}.neg{color:#b91c1c;font-weight:700}.zero{color:#64748b;font-weight:700}@media(max-width:800px){.chooser,.stats{grid-template-columns:1fr}.page{padding:14px}}@media print{.top .btn,.chooser{display:none}.page{max-width:none;padding:8mm}.card{break-inside:avoid}}
+    </style></head><body><div class="page">
+      <div class="top"><button class="btn" onclick="window.close()">← Back to Tracker</button><div class="school"><small>Al Reyadah School · English Department</small><h1>Student Attainment & Progress Analysis</h1><small>Read-only analysis · choose the evidence before generating a judgement.</small></div><button class="btn" onclick="window.print()">Print / Save PDF</button></div><div class="rule"></div>
+      <div class="chooser">
+        <section class="card choice"><h2>Attainment Analysis</h2><p>Judge attainment from one selected set of evidence.</p><label>Evidence</label><select id="attType" onchange="attTypeChanged()"><option value="diagnostic">Diagnostic total</option><option value="ca">CA total marks</option><option value="assessment">Each skill / assessment separately</option></select><div id="attAssessmentWrap" class="hidden"><label>Choose skill or assessment</label><select id="attAssessment">${diagnosticSkillHtml}${assessmentOptionsHtml}</select></div><button class="btn" onclick="runAttainment()">Generate Attainment Analysis</button></section>
+        <section class="card choice"><h2>Progress Analysis</h2><p>Compare two valid evidence points for the same students.</p><label>Comparison</label><select id="progType" onchange="progTypeChanged()"><option value="diagdiag">Diagnostic → Diagnostic</option><option value="skill">Same skill → same skill (different tests)</option><option value="diagca">Diagnostic → CA total marks</option></select><div id="diagDiagWrap"><label>Diagnostic comparison</label><select id="diagDiag"><option value="current|current">Current linked Diagnostic → Current linked Diagnostic</option></select><small style="display:block;color:#64748b;margin-top:5px">A second saved Diagnostic attempt is required for a true Diagnostic-to-Diagnostic comparison.</small></div><div id="skillWrap" class="hidden"><label>Choose matching skill assessments</label><select id="skillPair">${sameSkillPairs || '<option value="">No same-skill assessment pair available yet</option>'}</select></div><button class="btn" onclick="runProgress()">Generate Progress Analysis</button></section>
+      </div>
+      <div id="result"><div class="notice"><b>Select Attainment or Progress above.</b> This page reads the current tracker evidence only. It does not change marks, assessments or student records.</div></div>
+    </div>
+    <script>
+      const students=${JSON.stringify(selectedStudents.map(s=>({id:s.id,studentId:s.studentId,name:s.name})))};
+      const diagnostic=${JSON.stringify(diagnosticRows.map(x=>({id:x.student.id,score:Math.round(Number(x.result.score||0)),skills:x.result.skills||{}})))};
+      const ca=${JSON.stringify(caRows.map(x=>({id:x.student.id,value:x.value})))};
+      const tests=${JSON.stringify(assessmentOptions.map(t=>({id:t.id,type:t.type,title:t.title,max:t.max})))};
+      const marks=${JSON.stringify(assessmentOptions.flatMap(t=>selectedStudents.map(s=>({testId:t.id,studentId:s.id,value:scoreFor(t.id,s.id),targeted:isTargeted(t,s.id)}))))};
+      const diagSkillMax={Grammar:25,Vocabulary:25,Context:20,Reading:30};
+      const esc=s=>String(s??"").replace(/[&<>"]/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[ch]||ch));
+      const level=v=>v>=70?["Above expectations","g"]:v>=50?["In line with expectations","y"]:["Below expectations","r"];
+      const pct=(n,d)=>d?Math.round(n/d*100):0;
+      function attTypeChanged(){document.getElementById("attAssessmentWrap").classList.toggle("hidden",document.getElementById("attType").value!=="assessment")}
+      function progTypeChanged(){const v=document.getElementById("progType").value;document.getElementById("diagDiagWrap").classList.toggle("hidden",v!=="diagdiag");document.getElementById("skillWrap").classList.toggle("hidden",v!=="skill")}
+      function judgement(at){return at>=90?"Outstanding":at>=80?"Very Good":at>=70?"Good":at>=50?"Acceptable":at>=30?"Weak":"Very Weak"}
+      function renderAttainment(rows,label){
+        if(!rows.length){document.getElementById("result").innerHTML='<div class="notice">No results are available for this selection yet.</div>';return}
+        const above=rows.filter(x=>x.value>=70).length, inline=rows.filter(x=>x.value>=50&&x.value<70).length, below=rows.filter(x=>x.value<50).length, at=above+inline;
+        const ap=pct(above,rows.length),ip=pct(inline,rows.length),bp=pct(below,rows.length),atp=pct(at,rows.length),j=judgement(atp);
+        document.getElementById("result").innerHTML=`<div class="notice"><b>Attainment evidence:</b> ${esc(label)}. This is an attainment judgement for the selected evidence point.</div><div class="stats"><div class="stat"><span>Students analysed</span><b>${rows.length}</b></div><div class="stat"><span>Above expectations</span><b>${ap}%</b></div><div class="stat"><span>In line</span><b>${ip}%</b></div><div class="stat"><span>At or above</span><b>${atp}%</b></div><div class="stat"><span>Judgement</span><b>${j}</b></div></div><section class="card"><h2>${esc(label)}</h2><div class="bar"><i class="g" style="width:${ap}%"></i><i class="y" style="width:${ip}%"></i><i class="r" style="width:${bp}%"></i></div><p><b>${ap}%</b> Above (70%+) · <b>${ip}%</b> In line (50–69%) · <b>${bp}%</b> Below (&lt;50%)</p><p class="analysis"><b>${atp}%</b> attained at or above expectations. The selected evidence is judged <b>${j}</b>.</p></section><section class="card"><h2>Student attainment profile</h2><table><thead><tr><th>Student ID</th><th>Student name</th><th>Result</th><th>Level</th></tr></thead><tbody>${rows.map(x=>{const l=level(x.value);return `<tr><td>${esc(x.studentId)}</td><td><b>${esc(x.name)}</b></td><td>${x.value}%</td><td><span class="pill ${l[1]}">${l[0]}</span></td></tr>`}).join("")}</tbody></table></section>`;
+      }
+      function runAttainment(){
+        const type=document.getElementById("attType").value;
+        if(type==="diagnostic"){const rows=diagnostic.map(d=>{const s=students.find(x=>x.id===d.id);return s?{...s,value:d.score}:null}).filter(Boolean);renderAttainment(rows,"Diagnostic total");return}
+        if(type==="ca"){const rows=ca.map(d=>{const s=students.find(x=>x.id===d.id);return s?{...s,value:d.value}:null}).filter(Boolean);renderAttainment(rows,"CA total marks");return}
+        const sel=document.getElementById("attAssessment").value;
+        if(sel.startsWith("diagSkill:")){const key=sel.split(":")[1],max=diagSkillMax[key];const rows=diagnostic.map(d=>{const s=students.find(x=>x.id===d.id),raw=Number(d.skills?.[key]??NaN);return s&&Number.isFinite(raw)?{...s,value:Math.round(raw/max*100)}:null}).filter(Boolean);renderAttainment(rows,"Diagnostic · "+key);return}
+        const id=sel.replace("test:",""),test=tests.find(t=>t.id===id);if(!test)return;const rows=marks.filter(m=>m.testId===id&&m.targeted&&m.value!=="").map(m=>{const s=students.find(x=>x.id===m.studentId);return s?{...s,value:Math.round(Number(m.value)/test.max*100)}:null}).filter(Boolean);renderAttainment(rows,test.type+" · "+test.title);
+      }
+      function renderProgress(rows,label){
+        if(!rows.length){document.getElementById("result").innerHTML='<div class="notice">There are not enough matched results for this comparison yet.</div>';return}
+        const improved=rows.filter(x=>x.change>0).length,maintained=rows.filter(x=>x.change===0).length,lower=rows.filter(x=>x.change<0).length;
+        document.getElementById("result").innerHTML=`<div class="notice"><b>Progress comparison:</b> ${esc(label)}. Only students with both evidence points are compared.</div><div class="stats"><div class="stat"><span>Students compared</span><b>${rows.length}</b></div><div class="stat"><span>Improved</span><b>${improved}</b></div><div class="stat"><span>Maintained</span><b>${maintained}</b></div><div class="stat"><span>Lower result</span><b>${lower}</b></div><div class="stat"><span>Improved share</span><b>${pct(improved,rows.length)}%</b></div></div><section class="card"><h2>Student progress profile</h2><table><thead><tr><th>Student ID</th><th>Student name</th><th>Earlier</th><th>Later</th><th>Change</th></tr></thead><tbody>${rows.map(x=>`<tr><td>${esc(x.studentId)}</td><td><b>${esc(x.name)}</b></td><td>${x.before}%</td><td>${x.after}%</td><td class="${x.change>0?"pos":x.change<0?"neg":"zero"}">${x.change>0?"+":""}${x.change} pts</td></tr>`).join("")}</tbody></table></section>`;
+      }
+      function runProgress(){
+        const type=document.getElementById("progType").value;
+        if(type==="diagca"){const rows=diagnostic.map(d=>{const s=students.find(x=>x.id===d.id),later=ca.find(x=>x.id===d.id);return s&&later?{...s,before:d.score,after:later.value,change:later.value-d.score}:null}).filter(Boolean);renderProgress(rows,"Diagnostic → CA total marks");return}
+        if(type==="skill"){const pair=document.getElementById("skillPair").value;if(!pair){renderProgress([],"Same skill");return}const [a,b]=pair.split("|"),ta=tests.find(t=>t.id===a),tb=tests.find(t=>t.id===b);if(!ta||!tb)return;const rows=students.map(s=>{const ma=marks.find(m=>m.testId===a&&m.studentId===s.id),mb=marks.find(m=>m.testId===b&&m.studentId===s.id);if(!ma||!mb||ma.value===""||mb.value==="")return null;const before=Math.round(Number(ma.value)/ta.max*100),after=Math.round(Number(mb.value)/tb.max*100);return {...s,before,after,change:after-before}}).filter(Boolean);renderProgress(rows,ta.title+" → "+tb.title);return}
+        document.getElementById("result").innerHTML='<div class="notice"><b>Diagnostic → Diagnostic:</b> The current tracker exposes the latest linked Diagnostic result for each Student ID. A second historical Diagnostic result is not available in this read-only tracker view, so no progress judgement is generated rather than inventing a comparison.</div>';
+      }
+    </script></body></html>`;
+    const win=window.open("","_blank");
+    if(!win){flash("Please allow pop-ups to open the analysis page.");return}
+    win.document.open();win.document.write(html);win.document.close();
   }
 
   function extractStudentLevels() {
