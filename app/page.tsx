@@ -919,6 +919,36 @@ export default function Home({
     (byId("attType") as HTMLSelectElement | null)?.addEventListener("change", toggleAnalysisControls);
     (byId("progType") as HTMLSelectElement | null)?.addEventListener("change", toggleAnalysisControls);
     toggleAnalysisControls();
+
+    // The generated window can display inline script but some browsers do not execute it.
+    // Re-evaluate that script explicitly, then replace inline button handlers with direct listeners.
+    try {
+      const scriptText = Array.from(d.scripts).map((s) => s.textContent || "").join("\n");
+      if (scriptText.trim()) win.eval(scriptText);
+    } catch (error) {
+      console.error("Analysis script initialization failed", error);
+    }
+    const buttons = Array.from(d.querySelectorAll("button")) as HTMLButtonElement[];
+    const attainmentButton = buttons.find((button) => button.textContent?.includes("Generate Attainment Analysis"));
+    const progressButton = buttons.find((button) => button.textContent?.includes("Generate Progress Analysis"));
+    attainmentButton?.removeAttribute("onclick");
+    progressButton?.removeAttribute("onclick");
+    attainmentButton?.addEventListener("click", () => {
+      const runner = (win as unknown as { runAttainment?: () => void }).runAttainment;
+      if (typeof runner === "function") runner();
+      else {
+        const result = d.getElementById("result");
+        if (result) result.innerHTML = '<div class="notice"><b>Analysis could not initialize.</b> Please close this page and reopen Attainment & Progress from the tracker.</div>';
+      }
+    });
+    progressButton?.addEventListener("click", () => {
+      const runner = (win as unknown as { runProgress?: () => void }).runProgress;
+      if (typeof runner === "function") runner();
+      else {
+        const result = d.getElementById("result");
+        if (result) result.innerHTML = '<div class="notice"><b>Analysis could not initialize.</b> Please close this page and reopen Attainment & Progress from the tracker.</div>';
+      }
+    });
   }
 
   function extractStudentLevels() {
