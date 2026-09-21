@@ -910,6 +910,93 @@ export default function Home({
       flash("Please allow pop-ups to open the analysis page.");
       return;
     }
+
+    // Blob documents can inherit a policy that prevents their inline script from running.
+    // After the real document loads, bind the visible controls from this trusted tracker page.
+    win.addEventListener("load", () => {
+      try {
+        const d = win.document;
+        const attType = d.getElementById("attType") as HTMLSelectElement | null;
+        const progType = d.getElementById("progType") as HTMLSelectElement | null;
+        const attWrap = d.getElementById("attAssessmentWrap");
+        const diagWrap = d.getElementById("diagDiagWrap");
+        const skillWrap = d.getElementById("skillWrap");
+        const result = d.getElementById("result");
+
+        const toggle = () => {
+          attWrap?.classList.toggle("hidden", attType?.value !== "assessment");
+          diagWrap?.classList.toggle("hidden", progType?.value !== "diagdiag");
+          skillWrap?.classList.toggle("hidden", progType?.value !== "skill");
+        };
+        attType?.addEventListener("change", toggle);
+        progType?.addEventListener("change", toggle);
+        toggle();
+
+        const pct = (n: number, total: number) => total ? Math.round(n / total * 100) : 0;
+        const proportion = (p: number) => p > 90 ? "Almost all" : p >= 75 ? "Most" : p >= 61 ? "Large majority" : p >= 50 ? "Majority" : p >= 31 ? "Large minority" : p >= 16 ? "Minority" : "Few";
+        const judgement = (above: number, atOrAbove: number) => above >= 75 ? "Outstanding" : above >= 61 ? "Very Good" : above >= 50 ? "Good" : atOrAbove >= 75 ? "Acceptable" : atOrAbove > 15 ? "Weak" : "Very Weak";
+        const comment = (j: string) => j === "Outstanding" ? "Most students attain levels that are above curriculum standards." : j === "Very Good" ? "The large majority of students attain levels that are above curriculum standards." : j === "Good" ? "The majority of students attain levels that are above curriculum standards." : j === "Acceptable" ? "Most students attain levels that are in line with curriculum standards and a few are above." : j === "Weak" ? "Less than three-quarters of students attain levels that are at least in line with curriculum standards." : "Few students attain levels that are in line with curriculum standards.";
+        const safe = (v: unknown) => String(v ?? "").replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch] || ch));
+
+        const renderAttainmentParent = (rows: Array<{studentId:string;name:string;value:number}>, label: string) => {
+          if (!result) return;
+          if (!rows.length) { result.innerHTML = '<div class="notice">No results are available for this selection yet.</div>'; return; }
+          const above = rows.filter(x => x.value >= 70).length;
+          const inline = rows.filter(x => x.value >= 50 && x.value < 70).length;
+          const below = rows.length - above - inline;
+          const ap = pct(above, rows.length), ip = pct(inline, rows.length), bp = pct(below, rows.length), atp = pct(above + inline, rows.length);
+          const j = judgement(ap, atp);
+          result.innerHTML = '<div class="notice"><b>Attainment evidence:</b> ' + safe(label) + '.</div>' +
+            '<div class="stats"><div class="stat"><span>Students analysed</span><b>' + rows.length + '</b></div><div class="stat"><span>Above expectations</span><b>' + ap + '%</b></div><div class="stat"><span>In line</span><b>' + ip + '%</b></div><div class="stat"><span>At or above</span><b>' + atp + '%</b></div><div class="stat"><span>Judgement</span><b>' + j + '</b></div></div>' +
+            '<section class="card"><h2>' + safe(label) + '</h2><div class="bar"><i class="g" style="width:' + ap + '%"></i><i class="y" style="width:' + ip + '%"></i><i class="r" style="width:' + bp + '%"></i></div><p><b>' + ap + '%</b> Above (70%+) · <b>' + ip + '%</b> In line (50–69%) · <b>' + bp + '%</b> Below (&lt;50%)</p><p class="analysis"><b>' + atp + '%</b> attained at or above expectations. <b>' + comment(j) + '</b> Judgement: <b>' + j + '</b>. Framework proportion: <b>' + proportion(j === "Acceptable" ? atp : ap) + '</b>.</p></section>' +
+            '<section class="card"><h2>Student attainment profile</h2><table><thead><tr><th>Student ID</th><th>Student name</th><th>Result</th><th>Level</th></tr></thead><tbody>' + rows.map(x => { const level = x.value >= 70 ? ["Above expectations","g"] : x.value >= 50 ? ["In line with expectations","y"] : ["Below expectations","r"]; return '<tr><td>' + safe(x.studentId) + '</td><td><b>' + safe(x.name) + '</b></td><td>' + x.value + '%</td><td><span class="pill ' + level[1] + '">' + level[0] + '</span></td></tr>'; }).join("") + '</tbody></table></section>';
+        };
+
+        const buttons = Array.from(d.querySelectorAll("button")) as HTMLButtonElement[];
+        const attButton = buttons.find(b => b.textContent?.includes("Generate Attainment Analysis"));
+        attButton?.removeAttribute("onclick");
+        attButton?.addEventListener("click", () => {
+          const type = attType?.value || "diagnostic";
+          if (type === "diagnostic") {
+            renderAttainmentParent(diagnosticRows.map(x => ({studentId:x.student.studentId,name:x.student.name,value:Math.round(Number(x.result.score || 0))})), "Diagnostic total");
+            return;
+          }
+          if (type === "ca") {
+            renderAttainmentParent(caRows.map(x => ({studentId:x.student.studentId,name:x.student.name,value:x.value})), "CA total marks");
+            return;
+          }
+          const selectedEvidence = (d.getElementById("attAssessment") as HTMLSelectElement | null)?.value || "";
+          if (selectedEvidence.startsWith("diagSkill:")) {
+            const key = selectedEvidence.split(":")[1] as keyof NonNullable<DiagnosticResult["skills"]>;
+            const max = ({Grammar:25,Vocabulary:25,Context:20,Reading:30} as Record<string,number>)[key] || 100;
+            const rows = diagnosticRows.map(x => {
+              const raw = Number(x.result.skills?.[key]);
+              return Number.isFinite(raw) ? {studentId:x.student.studentId,name:x.student.name,value:Math.round(raw/max*100)} : null;
+            }).filter(Boolean) as Array<{studentId:string;name:string;value:number}>;
+            renderAttainmentParent(rows, "Diagnostic · " + key);
+            return;
+          }
+          const testId = selectedEvidence.replace("test:", "");
+          const test = assessmentOptions.find(t => t.id === testId);
+          if (!test) { if(result) result.innerHTML='<div class="notice">Please choose an assessment.</div>'; return; }
+          const rows = selectedStudents.map(student => {
+            const value = scoreFor(test.id, student.id);
+            return isTargeted(test, student.id) && value !== "" ? {studentId:student.studentId,name:student.name,value:Math.round(Number(value)/test.max*100)} : null;
+          }).filter(Boolean) as Array<{studentId:string;name:string;value:number}>;
+          renderAttainmentParent(rows, test.type + " · " + test.title);
+        });
+
+        const progButton = buttons.find(b => b.textContent?.includes("Generate Progress Analysis"));
+        progButton?.removeAttribute("onclick");
+        progButton?.addEventListener("click", () => {
+          const runner = (win as unknown as { runProgress?: () => void }).runProgress;
+          if (typeof runner === "function") runner();
+          else if (result) result.innerHTML = '<div class="notice"><b>Progress:</b> choose a valid comparison with two saved evidence points. Diagnostic → Diagnostic requires a second saved Diagnostic attempt.</div>';
+        });
+      } catch (error) {
+        console.error("Analysis page binding failed", error);
+      }
+    }, { once: true });
     window.setTimeout(() => URL.revokeObjectURL(analysisUrl), 60000);
   }
 
