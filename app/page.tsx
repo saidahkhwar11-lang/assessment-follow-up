@@ -1163,36 +1163,54 @@ export default function Home({
     const academicYear = "2026–2027";
     const className = `${classGradeLevel(selected)} · ${selected.section}`;
 
-    const headers = [
+    const categoryLayouts = continuousCategories.map((category) => {
+      const categoryTests = testsForCategory(category);
+      return {
+        category,
+        tests: categoryTests,
+        columnCount: Math.max(1, categoryTests.length),
+      };
+    });
+    const assessmentColumnCount = categoryLayouts.reduce(
+      (sum, layout) => sum + layout.columnCount,
+      0,
+    );
+    const columnCount = 4 + assessmentColumnCount;
+    const skillHeaders = [
       "Student ID",
       "Student Name",
       "Diagnostic (/100)",
-      ...selectedTests
-        .filter((t) => t.type !== "Diagnostic")
-        .map((t) => `${t.type} - ${t.title} (/${t.max})`),
-      ...continuousCategories.map(
-        (category) => `${category} (/${continuousWeights[category]})`,
-      ),
+      ...categoryLayouts.flatMap(({ category, columnCount: count }) => [
+        `${category} ${continuousWeights[category]}%`,
+        ...Array(Math.max(0, count - 1)).fill(""),
+      ]),
       "Weighted CA Total (/100)",
     ];
-
-    const regularTests = selectedTests.filter((t) => t.type !== "Diagnostic");
+    const assessmentHeaders = [
+      "",
+      "",
+      "",
+      ...categoryLayouts.flatMap(({ tests: categoryTests }) =>
+        categoryTests.length
+          ? categoryTests.map((test) => `${test.title} · ${test.date} · /${test.max}`)
+          : ["No assessment yet"],
+      ),
+      "",
+    ];
 
     const data = selectedStudents.map((s) => {
       const diagnostic = diagnosticFor(s);
-      const breakdown = continuousBreakdown(s.id);
       return [
         s.studentId,
         s.name,
         diagnostic ? Math.round(Number(diagnostic.score)) : "",
-        ...regularTests.map((t) => {
-          if (!isTargeted(t, s.id)) return "N/A";
-          const v = scoreFor(t.id, s.id);
-          return v === "" ? "" : Number(v);
-        }),
-        ...continuousCategories.map((category) => {
-          const value = breakdown[category];
-          return value === null ? "Not Assessed" : Number(value.toFixed(1));
+        ...categoryLayouts.flatMap<string | number>(({ tests: categoryTests }) => {
+          if (!categoryTests.length) return [""];
+          return categoryTests.map((test) => {
+            if (!isTargeted(test, s.id)) return "N/A";
+            const value = scoreFor(test.id, s.id);
+            return value === "" ? "" : Number(value);
+          });
         }),
         continuousTotal(s.id),
       ];
@@ -1206,31 +1224,47 @@ export default function Home({
       ["Term", term, "Academic Year", academicYear],
       ["Day", dayName, "Date", dateText],
       [],
-      headers,
+      skillHeaders,
+      assessmentHeaders,
       ...data,
     ];
 
     const sheet = XLSX.utils.aoa_to_sheet(metadataRows);
-    const lastCol = XLSX.utils.encode_col(headers.length - 1);
+    const lastCol = XLSX.utils.encode_col(columnCount - 1);
     const headerRow = 7;
-    const lastRow = Math.max(headerRow, headerRow + data.length);
+    const assessmentHeaderRow = 8;
 
     sheet["!merges"] = [
       {
         s: { r: 0, c: 0 },
-        e: { r: 0, c: Math.max(0, headers.length - 1) },
+        e: { r: 0, c: Math.max(0, columnCount - 1) },
       },
+      { s: { r: 6, c: 0 }, e: { r: 7, c: 0 } },
+      { s: { r: 6, c: 1 }, e: { r: 7, c: 1 } },
+      { s: { r: 6, c: 2 }, e: { r: 7, c: 2 } },
+      { s: { r: 6, c: columnCount - 1 }, e: { r: 7, c: columnCount - 1 } },
+      ...categoryLayouts.flatMap((layout, index) => {
+        const start = 3 + categoryLayouts
+          .slice(0, index)
+          .reduce((sum, item) => sum + item.columnCount, 0);
+        return layout.columnCount > 1
+          ? [{ s: { r: 6, c: start }, e: { r: 6, c: start + layout.columnCount - 1 } }]
+          : [];
+      }),
     ];
 
     sheet["!cols"] = [
-      { wch: 18 },
-      { wch: 32 },
-      { wch: 18 },
-      ...regularTests.map((t) => ({
-        wch: Math.max(18, Math.min(30, `${t.type} - ${t.title}`.length + 5)),
-      })),
-      ...continuousCategories.map(() => ({ wch: 20 })),
+      { wch: 15 },
+      { wch: 26 },
       { wch: 16 },
+      ...categoryLayouts.flatMap(({ tests: categoryTests }) =>
+        categoryTests.length
+          ? categoryTests.map((test) => ({
+              wch: Math.max(14, Math.min(22, test.title.length + 4)),
+            }))
+          : [{ wch: 16 }],
+      ),
+      { wch: 18 },
     ];
 
     sheet["!rows"] = [
@@ -1240,12 +1274,9 @@ export default function Home({
       { hpt: 22 },
       { hpt: 22 },
       { hpt: 8 },
-      { hpt: 26 },
+      { hpt: 25 },
+      { hpt: 38 },
     ];
-
-    sheet["!autofilter"] = {
-      ref: `A${headerRow}:${lastCol}${lastRow}`,
-    };
 
     // Basic formatting metadata. SheetJS preserves number/text layout,
     // merged title, widths, row heights, and filter in the downloaded workbook.
@@ -1263,14 +1294,22 @@ export default function Home({
       }
     });
 
-    for (let c = 0; c < headers.length; c += 1) {
-      const addr = `${XLSX.utils.encode_col(c)}${headerRow}`;
-      if (sheet[addr]) {
+    for (let c = 0; c < columnCount; c += 1) {
+      [headerRow, assessmentHeaderRow].forEach((row) => {
+        const addr = `${XLSX.utils.encode_col(c)}${row}`;
+        if (!sheet[addr]) return;
         sheet[addr].s = {
           font: { bold: true },
+          fill: { fgColor: { rgb: row === headerRow ? "DDEBF7" : "F4F8FB" } },
           alignment: { horizontal: "center", vertical: "center", wrapText: true },
+          border: {
+            top: { style: "thin", color: { rgb: "B8D2E6" } },
+            bottom: { style: "thin", color: { rgb: "B8D2E6" } },
+            left: { style: "thin", color: { rgb: "B8D2E6" } },
+            right: { style: "thin", color: { rgb: "B8D2E6" } },
+          },
         };
-      }
+      });
     }
 
     const book = XLSX.utils.book_new();
