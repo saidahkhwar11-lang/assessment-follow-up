@@ -153,8 +153,6 @@ const continuousCategoryFor = (type: TestType): ContinuousCategory | null => {
   if (type === "Extra Credit Exam" || type === "Bonus") return "Teacher's Choice";
   return type;
 };
-const formatWeightedMark = (value: number) =>
-  Number.isInteger(value) ? String(value) : value.toFixed(1);
 const gradeLevels = [
   "Grade 5",
   "Grade 6",
@@ -416,6 +414,12 @@ export default function Home({
     .filter((s) => s.classId === selectedId)
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
   const selectedTests = tests.filter((t) => t.classId === selectedId);
+  const testsForCategory = (category: ContinuousCategory) =>
+    selectedTests.filter((test) => continuousCategoryFor(test.type) === category);
+  const groupedAssessmentColumnCount = continuousCategories.reduce(
+    (count, category) => count + Math.max(1, testsForCategory(category).length),
+    0,
+  );
   const flash = (m: string) => {
     setMessage(m);
     window.setTimeout(() => setMessage(""), 3000);
@@ -1849,36 +1853,55 @@ export default function Home({
                   <table>
                     <thead>
                       <tr>
-                        <th>Student ID</th>
-                        <th>Student name</th>
-                        <th className="diagnostic-head">Diagnostic result<small>/100 · automatic</small></th>
-                        <th className="diagnostic-head">Details<small>skill breakdown</small></th>
-                        {selectedTests.map((t) => (
-                          <th key={t.id}>
-                            <span className="test-label">{t.type}</span>
-                            <b>{t.title}</b>
-                            <small>
-                              {t.date} · /{t.max}
-                            </small>
-                            {!!t.targetStudentIds?.length && (
-                              <small>{t.targetStudentIds.length} selected students</small>
-                            )}
-                            {canEdit && (
-                              <span className="test-actions">
-                                <button onClick={() => void editTest(t)}>Edit</button>
-                                <button className="danger-link" onClick={() => void deleteTest(t)}>Delete</button>
-                              </span>
-                            )}
+                        <th rowSpan={2}>Student ID</th>
+                        <th rowSpan={2}>Student name</th>
+                        <th rowSpan={2} className="diagnostic-head">Diagnostic result<small>/100 · automatic</small></th>
+                        <th rowSpan={2} className="diagnostic-head">Details<small>skill breakdown</small></th>
+                        {continuousCategories.map((category) => (
+                          <th
+                            key={category}
+                            className="skill-group-head"
+                            colSpan={Math.max(1, testsForCategory(category).length)}
+                          >
+                            {category}<small>{continuousWeights[category]}%</small>
                           </th>
                         ))}
-                        <th className="total-head">Weighted CA total<small>/100 · skill percentages</small></th>
+                        <th rowSpan={2} className="total-head">Weighted CA total<small>/100</small></th>
+                      </tr>
+                      <tr className="assessment-head-row">
+                        {continuousCategories.flatMap((category) => {
+                          const categoryTests = testsForCategory(category);
+                          if (!categoryTests.length) {
+                            return [
+                              <th key={`${category}-empty`} className="empty-assessment-head">
+                                <small>No assessment yet</small>
+                              </th>,
+                            ];
+                          }
+                          return categoryTests.map((t) => (
+                            <th key={t.id}>
+                              {category === "Teacher's Choice" && <span className="test-label">{t.type}</span>}
+                              <b>{t.title}</b>
+                              <small>{t.date} · /{t.max}</small>
+                              {!!t.targetStudentIds?.length && (
+                                <small>{t.targetStudentIds.length} selected students</small>
+                              )}
+                              {canEdit && (
+                                <span className="test-actions">
+                                  <button onClick={() => void editTest(t)}>Edit</button>
+                                  <button className="danger-link" onClick={() => void deleteTest(t)}>Delete</button>
+                                </span>
+                              )}
+                            </th>
+                          ));
+                        })}
                       </tr>
                     </thead>
                     <tbody>
                       {!selectedStudents.length ? (
                         <tr>
                           <td
-                            colSpan={5 + selectedTests.length}
+                            colSpan={5 + groupedAssessmentColumnCount}
                             className="empty"
                           >
                             No students have been added to this class yet.
@@ -1907,28 +1930,26 @@ export default function Home({
                                 Details
                               </button>
                             </td>
-                            {selectedTests.map((t) => (
-                              <td key={t.id}>
-                                {isTargeted(t, s.id) ? (
-                                  <input aria-label={`${s.name} ${t.title}`} title={onlineScoreFor(t.id, s) ? "Filled automatically from the online exam" : "Teacher-entered mark"} type="number" min="0" max={t.max} value={scoreFor(t.id, s.id)} placeholder="—" disabled={!canEdit || !!onlineScoreFor(t.id, s)} onChange={(e) => void updateScore(t, s, e.target.value)} />
-                                ) : (
-                                  <span className="not-targeted">N/A</span>
-                                )}
-                              </td>
-                            ))}
-                            <td className="total-cell">
-                              <b>{continuousTotal(s.id)}</b><small>/100</small>
-                              <span className="weight-breakdown">
-                                {continuousCategories.map((category) => {
-                                  const value = continuousBreakdown(s.id)[category];
-                                  return (
-                                    <span key={category} title={category}>
-                                      {category === "Teacher's Choice" ? "Choice" : category}: {value === null ? "Not Assessed" : `${formatWeightedMark(value)}/${continuousWeights[category]}`}
-                                    </span>
-                                  );
-                                })}
-                              </span>
-                            </td>
+                            {continuousCategories.flatMap((category) => {
+                              const categoryTests = testsForCategory(category);
+                              if (!categoryTests.length) {
+                                return [
+                                  <td key={`${category}-empty`} className="empty-assessment-cell">
+                                    <span className="not-targeted">—</span>
+                                  </td>,
+                                ];
+                              }
+                              return categoryTests.map((t) => (
+                                <td key={t.id}>
+                                  {isTargeted(t, s.id) ? (
+                                    <input aria-label={`${s.name} ${t.title}`} title={onlineScoreFor(t.id, s) ? "Filled automatically from the online exam" : "Teacher-entered mark"} type="number" min="0" max={t.max} value={scoreFor(t.id, s.id)} placeholder="—" disabled={!canEdit || !!onlineScoreFor(t.id, s)} onChange={(e) => void updateScore(t, s, e.target.value)} />
+                                  ) : (
+                                    <span className="not-targeted">N/A</span>
+                                  )}
+                                </td>
+                              ));
+                            })}
+                            <td className="total-cell"><b>{continuousTotal(s.id)}</b><small>/100</small></td>
                           </tr>
                         ))
                       )}
