@@ -1,8 +1,10 @@
-name: Apply Diagnostic Compatibility Fix
+name: Build and Deploy Assessment Tracker
 
 on:
   push:
     paths:
+      - 'app/page.tsx'
+      - 'app/globals.css'
       - 'scripts/fix-diagnostic-reader.py'
       - 'scripts/fix-admin-diagnostic-completion.py'
       - '.github/workflows/apply-diagnostic-compat-fix.yml'

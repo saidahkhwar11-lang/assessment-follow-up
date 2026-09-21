@@ -29,8 +29,16 @@ type TestType =
   | "Writing"
   | "Spelling"
   | "Speaking"
+  | "Listening"
   | "Extra Credit Exam"
   | "Bonus";
+type ContinuousCategory =
+  | "Spelling"
+  | "Reading"
+  | "Writing"
+  | "Speaking"
+  | "Listening"
+  | "Teacher's Choice";
 type ClassRoom = {
   id: string;
   grade: number;
@@ -110,12 +118,14 @@ const planTypes: TestType[] = [
   "Writing",
   "Spelling",
   "Speaking",
+  "Listening",
 ];
 const testTypes: TestType[] = [
   "Reading",
   "Writing",
   "Spelling",
   "Speaking",
+  "Listening",
   "Extra Credit Exam",
   "Bonus",
 ];
@@ -125,9 +135,26 @@ const plan: Record<TestType, number> = {
   Writing: 2,
   Spelling: 4,
   Speaking: 1,
+  Listening: 1,
   "Extra Credit Exam": 0,
   Bonus: 0,
 };
+const continuousWeights: Record<ContinuousCategory, number> = {
+  Spelling: 25,
+  Reading: 25,
+  Writing: 15,
+  Speaking: 10,
+  Listening: 10,
+  "Teacher's Choice": 15,
+};
+const continuousCategories = Object.keys(continuousWeights) as ContinuousCategory[];
+const continuousCategoryFor = (type: TestType): ContinuousCategory | null => {
+  if (type === "Diagnostic") return null;
+  if (type === "Extra Credit Exam" || type === "Bonus") return "Teacher's Choice";
+  return type;
+};
+const formatWeightedMark = (value: number) =>
+  Number.isInteger(value) ? String(value) : value.toFixed(1);
 const gradeLevels = [
   "Grade 5",
   "Grade 6",
@@ -733,13 +760,32 @@ export default function Home({
   function isTargeted(test: Test, studentId: string) {
     return !test.targetStudentIds?.length || test.targetStudentIds.includes(studentId);
   }
+  const continuousBreakdown = (studentId: string) => {
+    const breakdown = {} as Record<ContinuousCategory, number | null>;
+    continuousCategories.forEach((category) => {
+      const categoryTests = selectedTests.filter(
+        (test) =>
+          continuousCategoryFor(test.type) === category &&
+          isTargeted(test, studentId),
+      );
+      const maximum = categoryTests.reduce((sum, test) => sum + test.max, 0);
+      const earned = categoryTests.reduce(
+        (sum, test) => sum + Number(scoreFor(test.id, studentId) || 0),
+        0,
+      );
+      breakdown[category] = maximum
+        ? Math.min(continuousWeights[category], (earned / maximum) * continuousWeights[category])
+        : null;
+    });
+    return breakdown;
+  };
   const continuousTotal = (studentId: string) => {
-    const continuousTests = selectedTests.filter(
-        (test) => test.type !== "Diagnostic" && isTargeted(test, studentId),
-      ),
-      maximum = continuousTests.reduce((sum, test) => sum + test.max, 0),
-      earned = continuousTests.reduce((sum, test) => sum + Number(scoreFor(test.id, studentId) || 0), 0);
-    return maximum ? Math.round((earned / maximum) * 100) : 0;
+    const breakdown = continuousBreakdown(studentId);
+    const total = continuousCategories.reduce(
+      (sum, category) => sum + (breakdown[category] ?? 0),
+      0,
+    );
+    return Math.round(Math.min(100, total));
   };
   const hasContinuousAssessmentData = (studentId: string) =>
     selectedTests.some(
@@ -1120,13 +1166,17 @@ export default function Home({
       ...selectedTests
         .filter((t) => t.type !== "Diagnostic")
         .map((t) => `${t.type} - ${t.title} (/${t.max})`),
-      "Total (/100)",
+      ...continuousCategories.map(
+        (category) => `${category} (/${continuousWeights[category]})`,
+      ),
+      "Weighted CA Total (/100)",
     ];
 
     const regularTests = selectedTests.filter((t) => t.type !== "Diagnostic");
 
     const data = selectedStudents.map((s) => {
       const diagnostic = diagnosticFor(s);
+      const breakdown = continuousBreakdown(s.id);
       return [
         s.studentId,
         s.name,
@@ -1135,6 +1185,10 @@ export default function Home({
           if (!isTargeted(t, s.id)) return "N/A";
           const v = scoreFor(t.id, s.id);
           return v === "" ? "" : Number(v);
+        }),
+        ...continuousCategories.map((category) => {
+          const value = breakdown[category];
+          return value === null ? "Not Assessed" : Number(value.toFixed(1));
         }),
         continuousTotal(s.id),
       ];
@@ -1171,6 +1225,7 @@ export default function Home({
       ...regularTests.map((t) => ({
         wch: Math.max(18, Math.min(30, `${t.type} - ${t.title}`.length + 5)),
       })),
+      ...continuousCategories.map(() => ({ wch: 20 })),
       { wch: 16 },
     ];
 
@@ -1708,6 +1763,10 @@ export default function Home({
                     </div>
                   )}
                 </div>
+                <div className="weighting-note">
+                  <b>Weighted CA:</b> Spelling 25% · Reading 25% · Writing 15% · Speaking 10% · Listening 10% · Teacher&apos;s Choice 15%.
+                  <span>Teacher&apos;s Choice combines Extra Credit Exam and Bonus. Existing marks are unchanged.</span>
+                </div>
                 {canEdit && (
                   <div className="add-test">
                     <label>
@@ -1812,7 +1871,7 @@ export default function Home({
                             )}
                           </th>
                         ))}
-                        <th className="total-head">Continuous total<small>/100 · Diagnostic and non-targeted tests excluded</small></th>
+                        <th className="total-head">Weighted CA total<small>/100 · skill percentages</small></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1857,7 +1916,19 @@ export default function Home({
                                 )}
                               </td>
                             ))}
-                            <td className="total-cell"><b>{continuousTotal(s.id)}</b><small>/100</small></td>
+                            <td className="total-cell">
+                              <b>{continuousTotal(s.id)}</b><small>/100</small>
+                              <span className="weight-breakdown">
+                                {continuousCategories.map((category) => {
+                                  const value = continuousBreakdown(s.id)[category];
+                                  return (
+                                    <span key={category} title={category}>
+                                      {category === "Teacher's Choice" ? "Choice" : category}: {value === null ? "Not Assessed" : `${formatWeightedMark(value)}/${continuousWeights[category]}`}
+                                    </span>
+                                  );
+                                })}
+                              </span>
+                            </td>
                           </tr>
                         ))
                       )}
