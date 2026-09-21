@@ -799,6 +799,71 @@ export default function Home({
         scoreFor(test.id, studentId) !== "",
     );
 
+  function openAttainmentProgressAnalysis() {
+    if (!selected) return;
+
+    const analysed = selectedStudents
+      .map((student) => {
+        const diagnostic = diagnosticFor(student);
+        if (!diagnostic) return null;
+        const baseline = Math.round(Number(diagnostic.score || 0));
+        const hasCA = hasContinuousAssessmentData(student.id);
+        const ca = hasCA ? continuousTotal(student.id) : null;
+        const level = baseline >= 70 ? "Above expectations" : baseline >= 50 ? "In line with expectations" : "Below expectations";
+        const progress = ca === null ? null : ca - baseline;
+        return { student, diagnostic, baseline, ca, level, progress };
+      })
+      .filter(Boolean) as Array<{ student: Student; diagnostic: DiagnosticResult; baseline: number; ca: number | null; level: string; progress: number | null }>;
+
+    if (!analysed.length) {
+      flash("No linked Diagnostic results are available for this class yet.");
+      return;
+    }
+
+    const above = analysed.filter((x) => x.baseline >= 70).length;
+    const inLine = analysed.filter((x) => x.baseline >= 50 && x.baseline < 70).length;
+    const below = analysed.filter((x) => x.baseline < 50).length;
+    const atOrAbove = above + inLine;
+    const pct = (n: number) => Math.round((n / analysed.length) * 100);
+    const abovePct = pct(above), inLinePct = pct(inLine), belowPct = pct(below), atOrAbovePct = pct(atOrAbove);
+    const judgement = atOrAbovePct >= 75 ? "Acceptable or better" : "Weak";
+    const progressRows = analysed.filter((x) => x.ca !== null);
+    const improved = progressRows.filter((x) => Number(x.progress) > 0).length;
+    const maintained = progressRows.filter((x) => Number(x.progress) === 0).length;
+    const declined = progressRows.filter((x) => Number(x.progress) < 0).length;
+
+    const skillGroups = [
+      ["Grammar", 25, (d: DiagnosticResult) => Number(d.skills?.Grammar ?? 0), "Accuracy with grammar structures and sentence formation.", "10-minute Sentence Repair: model one target rule, then students correct and rebuild five short sentences.", "Mini-whiteboards, sentence cards and an exit slip."],
+      ["Vocabulary", 25, (d: DiagnosticResult) => Number(d.skills?.Vocabulary ?? 0), "Word meaning, recognition and accurate use.", "10-minute Word Connect: match key words to meanings or pictures, then use four words in meaningful sentences.", "Word cards, picture/meaning cards and notebooks."],
+      ["Context Clues", 20, (d: DiagnosticResult) => Number(d.skills?.Context ?? 0), "Using nearby clues to determine meaning.", "10-minute Clue Hunt: highlight clue words, select the meaning and explain which clue helped.", "Short context sentences, highlighters and an exit slip."],
+      ["Reading", 30, (d: DiagnosticResult) => Number(d.skills?.Reading ?? 0), "Main idea, details, inference and text evidence.", "12-minute Read–Mark–Answer: chunk a short text, underline evidence, then answer main-idea, detail and inference questions.", "One short level-appropriate text, highlighters and question cards."],
+    ] as const;
+
+    const esc = (v: unknown) => String(v ?? "").replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch] || ch));
+    const rows = analysed.map((x) => `<tr><td>${esc(x.student.studentId)}</td><td><b>${esc(x.student.name)}</b></td><td>${x.baseline}%</td><td><span class="pill ${x.baseline>=70?"green":x.baseline>=50?"yellow":"red"}">${esc(x.level)}</span></td><td>${x.ca===null?"—":x.ca+"%"}</td><td>${x.progress===null?"Not available":(x.progress>0?"+":"")+x.progress+" pts"}</td></tr>`).join("");
+    const supports = skillGroups.map(([name,max,getScore,need,activity,materials]) => {
+      const group = analysed.filter((x) => getScore(x.diagnostic) / max < .5);
+      if (!group.length) return "";
+      return `<section class="card support"><div class="support-head"><div><h2>${name} Support</h2><small>Below 50% in this diagnostic skill</small></div><b>${group.length} students</b></div><div class="chips">${group.map((x)=>`<span>${esc(x.student.name)} · ${getScore(x.diagnostic)}/${max}</span>`).join("")}</div><div class="support-grid"><div><strong>FOCUS, ACTIVITY & MATERIALS</strong><p><b>Common learning need:</b> ${need}</p><p><b>Focused activity:</b> ${activity}</p><p><b>Materials:</b> ${materials}</p></div><div><strong>CHECK & FOLLOW-UP</strong><p><b>Success check:</b> At least 80% accuracy in the focused check.</p><p><b>Follow-up:</b> Recheck the same focus in the next lesson and later curriculum-aligned assessment.</p></div></div></section>`;
+    }).join("");
+
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Student Attainment & Progress Analysis</title><style>
+      *{box-sizing:border-box}body{margin:0;background:#f4f8fa;color:#173650;font:14px Arial,sans-serif}.page{max-width:1100px;margin:auto;padding:28px}.top{display:flex;justify-content:space-between;align-items:center;gap:16px}.back{border:0;background:#17365d;color:white;padding:10px 16px;border-radius:9px;font-weight:700;cursor:pointer}.school{text-align:center}.school small{color:#64748b}.school h1{font-size:30px;margin:5px 0}.rule{height:3px;background:#159a91;margin:22px 0}.notice,.card{background:white;border:1px solid #d7e1e7;border-radius:8px;padding:18px;margin:14px 0}.notice{background:#fffdf5}.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}.stat{background:white;border:1px solid #d7e1e7;border-radius:8px;padding:16px}.stat span{display:block;color:#64748b;font-weight:700}.stat b{display:block;font-size:27px;margin-top:8px}.bar{height:24px;border-radius:20px;overflow:hidden;display:flex;background:#eee}.bar i{display:block;height:100%}.green-bg{background:#15955b}.yellow-bg{background:#f1c644}.red-bg{background:#d64d4d}h2{margin:0 0 12px}table{width:100%;border-collapse:collapse}th,td{padding:10px;border-bottom:1px solid #dbe4e8;text-align:left}th{background:#eaf3f6}.pill{display:inline-block;padding:5px 10px;border-radius:18px;font-weight:700}.green{background:#15955b;color:white}.yellow{background:#f1c644;color:#3b3420}.red{background:#d64d4d;color:white}.analysis{border-left:4px solid #159a91;padding-left:14px}.support-head{display:flex;justify-content:space-between;background:#eaf5f4;margin:-18px -18px 14px;padding:14px 18px}.support-head b{background:#159a91;color:white;border-radius:18px;padding:7px 12px}.chips{display:flex;flex-wrap:wrap;gap:6px}.chips span{border:1px solid #d4dde2;border-radius:16px;padding:5px 9px;font-weight:700}.support-grid{display:grid;grid-template-columns:2fr 1fr;gap:25px;border-top:1px solid #d7e1e7;margin-top:14px;padding-top:14px}.support-grid strong{font-size:12px;letter-spacing:1px;color:#64748b}.progress-box{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.progress-box div{background:#f7fafc;padding:14px;border-radius:8px;text-align:center}.progress-box b{display:block;font-size:22px}@media(max-width:800px){.stats,.progress-box{grid-template-columns:1fr 1fr}.support-grid{grid-template-columns:1fr}.page{padding:14px}}@media print{body{background:white}.back{display:none}.page{max-width:none;padding:8mm}.card,.notice{break-inside:avoid}}
+    </style></head><body><div class="page"><div class="top"><button class="back" onclick="window.close();history.back()">← Back to Tracker</button><div class="school"><small>Al Reyadah School · English Department</small><h1>Student Attainment & Progress Analysis</h1><small>Read-only analysis based on the current Assessment Tracker evidence.</small></div><button class="back" onclick="window.print()">Print / Save PDF</button></div><div class="rule"></div>
+    <div class="notice"><b>Diagnostic baseline judgement.</b> This describes attainment at the starting point. Progress is shown only where a later CA result is available for comparison.</div>
+    <div class="stats"><div class="stat"><span>Students analysed</span><b>${analysed.length}</b></div><div class="stat"><span>Above expectations</span><b>${abovePct}%</b></div><div class="stat"><span>In line</span><b>${inLinePct}%</b></div><div class="stat"><span>At or above</span><b>${atOrAbovePct}%</b></div><div class="stat"><span>Baseline judgement</span><b>${judgement}</b></div></div>
+    <section class="card"><h2>${esc(classGradeLevel(selected))} · ${esc(selected.section)}</h2><p>Diagnostic starting-point attainment</p><div class="bar"><i class="green-bg" style="width:${abovePct}%"></i><i class="yellow-bg" style="width:${inLinePct}%"></i><i class="red-bg" style="width:${belowPct}%"></i></div><p><b>${abovePct}%</b> Above (70%+) &nbsp; <b>${inLinePct}%</b> In line (50–69%) &nbsp; <b>${belowPct}%</b> Below (&lt;50%)</p></section>
+    <section class="card"><h2>Diagnostic Analysis</h2><p class="analysis"><b>${atOrAbovePct}%</b> of students attained levels at or above the curriculum standard, while <b>${belowPct}%</b> were below it. The diagnostic baseline is judged as <b>${judgement}</b>. The results indicate a need to identify learning gaps, provide targeted support and appropriate challenge.</p></section>
+    <section class="card"><h2>Progress Analysis</h2>${progressRows.length?`<div class="progress-box"><div><span>Students compared</span><b>${progressRows.length}</b></div><div><span>Improved</span><b>${improved}</b></div><div><span>Maintained</span><b>${maintained}</b></div><div><span>Lower than baseline</span><b>${declined}</b></div></div><p class="analysis">Progress compares each student's Diagnostic baseline with her current weighted CA total. It does not overwrite either result.</p>`:`<p class="analysis"><b>Progress is not judged yet.</b> A later CA result is required before progress can be compared with the Diagnostic baseline.</p>`}</section>
+    <section class="card"><h2>Student starting-point & progress profile</h2><table><thead><tr><th>Student ID</th><th>Student name</th><th>Baseline</th><th>Starting level</th><th>Current CA</th><th>Change</th></tr></thead><tbody>${rows}</tbody></table></section>
+    <section class="card"><h2>Recommendations to Improve Progress</h2><div class="analysis"><p><b>${below}</b> students (${belowPct}%) are currently below curriculum expectations.</p><ol><li>Review assessment responses by skill to identify exact learning gaps.</li><li>Group students according to common needs and provide short, focused reteaching.</li><li>Set a clear next target using the current result as evidence.</li><li>Differentiate classroom tasks for support and challenge.</li><li>Check progress regularly through formative assessment and later curriculum-aligned assessment.</li></ol></div></section>
+    <h2 style="margin-top:24px">Intervention Groups by Common Need</h2><p>Students scoring below 50% in a Diagnostic skill are included in its support group. A student may appear in more than one group.</p>${supports}
+    </div></body></html>`;
+    const win = window.open("", "_blank");
+    if (!win) { flash("Please allow pop-ups to open the analysis page."); return; }
+    win.document.open(); win.document.write(html); win.document.close();
+  }
+
   function extractStudentLevels() {
     if (!selected) return;
     const next: TierSnapshot = { "Tier 1": [], "Tier 2": [], "Tier 3": [] };
@@ -1854,6 +1919,7 @@ export default function Home({
               <div className="class-view-tabs" role="tablist" aria-label="Class tools">
                 <button type="button" className={classViewTab === "tracker" ? "active" : ""} onClick={() => setClassViewTab("tracker")}>Assessment Tracker</button>
                 <button type="button" className={classViewTab === "support" ? "active" : ""} onClick={() => setClassViewTab("support")}>Student Levels &amp; Support Plan</button>
+                <button type="button" onClick={openAttainmentProgressAnalysis}>Attainment &amp; Progress ↗</button>
               </div>
               {classViewTab === "tracker" ? (
               <>
