@@ -843,12 +843,44 @@ export default function Home({
       const pct=(n,d)=>d?Math.round(n/d*100):0;
       function attTypeChanged(){document.getElementById("attAssessmentWrap").classList.toggle("hidden",document.getElementById("attType").value!=="assessment")}
       function progTypeChanged(){const v=document.getElementById("progType").value;document.getElementById("diagDiagWrap").classList.toggle("hidden",v!=="diagdiag");document.getElementById("skillWrap").classList.toggle("hidden",v!=="skill")}
-      function judgement(at){return at>=90?"Outstanding":at>=80?"Very Good":at>=70?"Good":at>=50?"Acceptable":at>=30?"Weak":"Very Weak"}
+      function proportion(p){return p>90?"Almost all":p>=75?"Most":p>=61?"Large majority":p>=50?"Majority":p>=31?"Large minority":p>=16?"Minority":"Few"}
+      function attainmentJudgement(above,atOrAbove){
+        if(above>=75)return "Outstanding";
+        if(above>=61)return "Very Good";
+        if(above>=50)return "Good";
+        if(atOrAbove>=75)return "Acceptable";
+        if(atOrAbove>15)return "Weak";
+        return "Very Weak";
+      }
+      function attainmentComment(above,atOrAbove,j){
+        if(j==="Outstanding")return "Most students attain levels that are above curriculum standards.";
+        if(j==="Very Good")return "The large majority of students attain levels that are above curriculum standards.";
+        if(j==="Good")return "The majority of students attain levels that are above curriculum standards.";
+        if(j==="Acceptable")return "Most students attain levels that are in line with curriculum standards and a few are above.";
+        if(j==="Weak")return "Less than three-quarters of students attain levels that are at least in line with curriculum standards.";
+        return "Few students attain levels that are in line with curriculum standards.";
+      }
+      function progressJudgement(better,expected){
+        if(better>=75)return "Outstanding";
+        if(better>=61)return "Very Good";
+        if(better>=50)return "Good";
+        if(expected>=75)return "Acceptable";
+        if(expected>15)return "Weak";
+        return "Very Weak";
+      }
+      function progressComment(better,expected,j){
+        if(j==="Outstanding")return "Internal assessment information indicates that most students make better than expected progress in relation to their individual starting points and the curriculum standards.";
+        if(j==="Very Good")return "Internal assessment information indicates that a large majority of students make better than expected progress in relation to individual starting points and the curriculum standards.";
+        if(j==="Good")return "Internal assessment information indicates that the majority of students make better than expected progress in relation to their individual starting points and the curriculum standards.";
+        if(j==="Acceptable")return "Internal assessment information indicates that most students make the expected progress in relation to individual starting points and the curriculum standards.";
+        if(j==="Weak")return "Assessment information indicates that less than three-quarters of the students make the expected progress in relation to individual starting points and the curriculum standards.";
+        return "Assessment information indicates that only a few students make the expected progress in relation to individual starting points and the curriculum standards.";
+      }
       function renderAttainment(rows,label){
         if(!rows.length){document.getElementById("result").innerHTML='<div class="notice">No results are available for this selection yet.</div>';return}
         const above=rows.filter(x=>x.value>=70).length, inline=rows.filter(x=>x.value>=50&&x.value<70).length, below=rows.filter(x=>x.value<50).length, at=above+inline;
-        const ap=pct(above,rows.length),ip=pct(inline,rows.length),bp=pct(below,rows.length),atp=pct(at,rows.length),j=judgement(atp);
-        document.getElementById("result").innerHTML="<div class=\"notice\"><b>Attainment evidence:</b> "+esc(label)+". This is an attainment judgement for the selected evidence point.</div><div class=\"stats\"><div class=\"stat\"><span>Students analysed</span><b>"+rows.length+"</b></div><div class=\"stat\"><span>Above expectations</span><b>"+ap+"%</b></div><div class=\"stat\"><span>In line</span><b>"+ip+"%</b></div><div class=\"stat\"><span>At or above</span><b>"+atp+"%</b></div><div class=\"stat\"><span>Judgement</span><b>"+j+"</b></div></div><section class=\"card\"><h2>"+esc(label)+"</h2><div class=\"bar\"><i class=\"g\" style=\"width:"+ap+"%\"></i><i class=\"y\" style=\"width:"+ip+"%\"></i><i class=\"r\" style=\"width:"+bp+"%\"></i></div><p><b>"+ap+"%</b> Above (70%+) · <b>"+ip+"%</b> In line (50–69%) · <b>"+bp+"%</b> Below (&lt;50%)</p><p class=\"analysis\"><b>"+atp+"%</b> attained at or above expectations. The selected evidence is judged <b>"+j+"</b>.</p></section><section class=\"card\"><h2>Student attainment profile</h2><table><thead><tr><th>Student ID</th><th>Student name</th><th>Result</th><th>Level</th></tr></thead><tbody>"+rows.map(x=>{const l=level(x.value);return "<tr><td>"+esc(x.studentId)+"</td><td><b>"+esc(x.name)+"</b></td><td>"+x.value+"%</td><td><span class=\"pill "+l[1]+"\">"+l[0]+"</span></td></tr>"}).join("")+"</tbody></table></section>";
+        const ap=pct(above,rows.length),ip=pct(inline,rows.length),bp=pct(below,rows.length),atp=pct(at,rows.length),j=attainmentJudgement(ap,atp),comment=attainmentComment(ap,atp,j);
+        document.getElementById("result").innerHTML="<div class=\"notice\"><b>Attainment evidence:</b> "+esc(label)+". This is an attainment judgement for the selected evidence point.</div><div class=\"stats\"><div class=\"stat\"><span>Students analysed</span><b>"+rows.length+"</b></div><div class=\"stat\"><span>Above expectations</span><b>"+ap+"%</b></div><div class=\"stat\"><span>In line</span><b>"+ip+"%</b></div><div class=\"stat\"><span>At or above</span><b>"+atp+"%</b></div><div class=\"stat\"><span>Judgement</span><b>"+j+"</b></div></div><section class=\"card\"><h2>"+esc(label)+"</h2><div class=\"bar\"><i class=\"g\" style=\"width:"+ap+"%\"></i><i class=\"y\" style=\"width:"+ip+"%\"></i><i class=\"r\" style=\"width:"+bp+"%\"></i></div><p><b>"+ap+"%</b> Above (70%+) · <b>"+ip+"%</b> In line (50–69%) · <b>"+bp+"%</b> Below (&lt;50%)</p><p class=\"analysis\"><b>"+atp+"%</b> attained at or above expectations. <b>"+comment+"</b> Judgement: <b>"+j+"</b>. Framework proportion: <b>"+proportion(j==="Acceptable"?atp:ap)+"</b>.</p></section><section class=\"card\"><h2>Student attainment profile</h2><table><thead><tr><th>Student ID</th><th>Student name</th><th>Result</th><th>Level</th></tr></thead><tbody>"+rows.map(x=>{const l=level(x.value);return "<tr><td>"+esc(x.studentId)+"</td><td><b>"+esc(x.name)+"</b></td><td>"+x.value+"%</td><td><span class=\"pill "+l[1]+"\">"+l[0]+"</span></td></tr>"}).join("")+"</tbody></table></section>";
       }
       function runAttainment(){
         const type=document.getElementById("attType").value;
@@ -860,8 +892,8 @@ export default function Home({
       }
       function renderProgress(rows,label){
         if(!rows.length){document.getElementById("result").innerHTML='<div class="notice">There are not enough matched results for this comparison yet.</div>';return}
-        const improved=rows.filter(x=>x.change>0).length,maintained=rows.filter(x=>x.change===0).length,lower=rows.filter(x=>x.change<0).length;
-        document.getElementById("result").innerHTML="<div class=\"notice\"><b>Progress comparison:</b> "+esc(label)+". Only students with both evidence points are compared.</div><div class=\"stats\"><div class=\"stat\"><span>Students compared</span><b>"+rows.length+"</b></div><div class=\"stat\"><span>Improved</span><b>"+improved+"</b></div><div class=\"stat\"><span>Maintained</span><b>"+maintained+"</b></div><div class=\"stat\"><span>Lower result</span><b>"+lower+"</b></div><div class=\"stat\"><span>Improved share</span><b>"+pct(improved,rows.length)+"%</b></div></div><section class=\"card\"><h2>Student progress profile</h2><table><thead><tr><th>Student ID</th><th>Student name</th><th>Earlier</th><th>Later</th><th>Change</th></tr></thead><tbody>"+rows.map(x=>"<tr><td>"+esc(x.studentId)+"</td><td><b>"+esc(x.name)+"</b></td><td>"+x.before+"%</td><td>"+x.after+"%</td><td class=\""+(x.change>0?"pos":x.change<0?"neg":"zero")+"\">"+(x.change>0?"+":"")+x.change+" pts</td></tr>").join("")+"</tbody></table></section>";
+        const improved=rows.filter(x=>x.change>0).length,maintained=rows.filter(x=>x.change===0).length,lower=rows.filter(x=>x.change<0).length,better=pct(improved,rows.length),expected=pct(improved+maintained,rows.length),j=progressJudgement(better,expected),comment=progressComment(better,expected,j);
+        document.getElementById("result").innerHTML="<div class=\"notice\"><b>Progress comparison:</b> "+esc(label)+". Only students with both evidence points are compared.</div><div class=\"stats\"><div class=\"stat\"><span>Students compared</span><b>"+rows.length+"</b></div><div class=\"stat\"><span>Improved</span><b>"+improved+"</b></div><div class=\"stat\"><span>Maintained</span><b>"+maintained+"</b></div><div class=\"stat\"><span>Lower result</span><b>"+lower+"</b></div><div class=\"stat\"><span>Improved share</span><b>"+pct(improved,rows.length)+"%</b></div></div><section class=\"card\"><h2>Framework Progress Analysis</h2><p class=\"analysis\"><b>"+comment+"</b> Judgement: <b>"+j+"</b>. Better than expected: <b>"+better+"%</b> ("+proportion(better)+"). At least expected: <b>"+expected+"%</b> ("+proportion(expected)+").</p></section><section class=\"card\"><h2>Student progress profile</h2><table><thead><tr><th>Student ID</th><th>Student name</th><th>Earlier</th><th>Later</th><th>Change</th></tr></thead><tbody>"+rows.map(x=>"<tr><td>"+esc(x.studentId)+"</td><td><b>"+esc(x.name)+"</b></td><td>"+x.before+"%</td><td>"+x.after+"%</td><td class=\""+(x.change>0?"pos":x.change<0?"neg":"zero")+"\">"+(x.change>0?"+":"")+x.change+" pts</td></tr>").join("")+"</tbody></table></section>";
       }
       function runProgress(){
         const type=document.getElementById("progType").value;
