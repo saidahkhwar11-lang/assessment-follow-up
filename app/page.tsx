@@ -1278,39 +1278,115 @@ export default function Home({
       { hpt: 38 },
     ];
 
-    // Basic formatting metadata. SheetJS preserves number/text layout,
-    // merged title, widths, row heights, and filter in the downloaded workbook.
-    const titleCell = sheet["A1"];
-    if (titleCell) {
-      titleCell.s = {
-        font: { bold: true, sz: 16 },
-        alignment: { horizontal: "center", vertical: "center" },
-      };
-    }
+    // Professional export styling only — no tracker data or marks are changed.
+    const border = {
+      top: { style: "thin", color: { rgb: "C9D4E2" } },
+      bottom: { style: "thin", color: { rgb: "C9D4E2" } },
+      left: { style: "thin", color: { rgb: "C9D4E2" } },
+      right: { style: "thin", color: { rgb: "C9D4E2" } },
+    };
+    const paint = (addr: string, style: Record<string, unknown>) => {
+      if (sheet[addr]) sheet[addr].s = style;
+    };
 
-    ["A3", "C3", "A4", "C4", "A5", "C5"].forEach((addr) => {
-      if (sheet[addr]) {
-        sheet[addr].s = { font: { bold: true } };
-      }
+    paint("A1", {
+      font: { bold: true, sz: 18, color: { rgb: "FFFFFF" } },
+      fill: { fgColor: { rgb: "17365D" } },
+      alignment: { horizontal: "center", vertical: "center" },
     });
 
-    for (let c = 0; c < columnCount; c += 1) {
-      [headerRow, assessmentHeaderRow].forEach((row) => {
-        const addr = `${XLSX.utils.encode_col(c)}${row}`;
-        if (!sheet[addr]) return;
-        sheet[addr].s = {
-          font: { bold: true },
-          fill: { fgColor: { rgb: row === headerRow ? "DDEBF7" : "F4F8FB" } },
-          alignment: { horizontal: "center", vertical: "center", wrapText: true },
-          border: {
-            top: { style: "thin", color: { rgb: "B8D2E6" } },
-            bottom: { style: "thin", color: { rgb: "B8D2E6" } },
-            left: { style: "thin", color: { rgb: "B8D2E6" } },
-            right: { style: "thin", color: { rgb: "B8D2E6" } },
-          },
-        };
+    ["A3", "C3", "A4", "C4", "A5", "C5"].forEach((addr) =>
+      paint(addr, {
+        font: { bold: true, color: { rgb: "17365D" } },
+        fill: { fgColor: { rgb: "DCE6F1" } },
+        alignment: { vertical: "center" },
+        border,
+      }),
+    );
+    ["B3", "D3", "B4", "D4", "B5", "D5"].forEach((addr) =>
+      paint(addr, {
+        font: { bold: true, color: { rgb: "1F2937" } },
+        fill: { fgColor: { rgb: "F7FAFC" } },
+        alignment: { vertical: "center" },
+        border,
+      }),
+    );
+
+    const categoryColors: Record<ContinuousCategory, string> = {
+      Spelling: "D9EAD3",
+      Reading: "DDEBF7",
+      Writing: "FCE4D6",
+      Speaking: "E4DFEC",
+      Listening: "FFF2CC",
+      Coursework: "DDEBF7",
+    };
+
+    // Student/diagnostic/total headers.
+    [0, 1, 2].forEach((col) => {
+      const addr = `${XLSX.utils.encode_col(col)}7`;
+      paint(addr, {
+        font: { bold: true, color: { rgb: "FFFFFF" } },
+        fill: { fgColor: { rgb: col === 2 ? "5B9BD5" : "4472C4" } },
+        alignment: { horizontal: "center", vertical: "center", wrapText: true },
+        border,
       });
+    });
+    paint(`${lastCol}7`, {
+      font: { bold: true, color: { rgb: "FFFFFF" }, sz: 11 },
+      fill: { fgColor: { rgb: "17365D" } },
+      alignment: { horizontal: "center", vertical: "center", wrapText: true },
+      border,
+    });
+
+    let categoryStart = 3;
+    categoryLayouts.forEach(({ category, columnCount: count }) => {
+      const fill = categoryColors[category];
+      for (let offset = 0; offset < count; offset += 1) {
+        const col = categoryStart + offset;
+        const topAddr = `${XLSX.utils.encode_col(col)}7`;
+        const subAddr = `${XLSX.utils.encode_col(col)}8`;
+        paint(topAddr, {
+          font: { bold: true, color: { rgb: "17365D" }, sz: 11 },
+          fill: { fgColor: { rgb: fill } },
+          alignment: { horizontal: "center", vertical: "center", wrapText: true },
+          border,
+        });
+        paint(subAddr, {
+          font: { bold: true, color: { rgb: "334155" }, sz: 10 },
+          fill: { fgColor: { rgb: "F8FAFC" } },
+          alignment: { horizontal: "center", vertical: "center", wrapText: true },
+          border,
+        });
+      }
+      categoryStart += count;
+    });
+
+    const firstDataRow = 9;
+    const lastDataRow = 8 + data.length;
+    for (let row = firstDataRow; row <= lastDataRow; row += 1) {
+      for (let col = 0; col < columnCount; col += 1) {
+        const addr = `${XLSX.utils.encode_col(col)}${row}`;
+        if (!sheet[addr]) continue;
+        const isName = col === 1;
+        const isTotal = col === columnCount - 1;
+        sheet[addr].s = {
+          font: { bold: isName || isTotal, color: { rgb: isTotal ? "17365D" : "1F2937" } },
+          fill: { fgColor: { rgb: isTotal ? "EAF2F8" : row % 2 ? "FFFFFF" : "F8FAFC" } },
+          alignment: { horizontal: isName ? "left" : "center", vertical: "center", wrapText: true },
+          border,
+        };
+      }
     }
+
+    sheet["!autofilter"] = { ref: `A7:${lastCol}${Math.max(8, lastDataRow)}` };
+    sheet["!freeze"] = { xSplit: 2, ySplit: 8, topLeftCell: "C9", activePane: "bottomRight", state: "frozen" };
+    sheet["!margins"] = { left: 0.25, right: 0.25, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 };
+    sheet["!pageSetup"] = {
+      orientation: "landscape",
+      fitToWidth: 1,
+      fitToHeight: 0,
+      paperSize: 9,
+    };
 
     const book = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(book, sheet, "Class Marks");
