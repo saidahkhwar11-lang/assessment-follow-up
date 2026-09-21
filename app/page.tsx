@@ -2174,14 +2174,14 @@ export default function Home({
                   <div className="panel-head">
                     <div>
                       <p className="eyebrow">ON-DEMAND · NO EXTRA LIVE LISTENERS</p>
-                      <h2>Student Levels &amp; Support Plan</h2>
-                      <p>Choose Diagnostic results or CA marks, then extract the selected class into the school's three support tiers.</p>
+                      <h2>Attainment &amp; Progress Analysis</h2>
+                      <p>Complete the class analysis here, identify student levels and priority needs, then generate the support plan for saving in the Department Portfolio.</p>
                     </div>
-                    <button type="button" className="primary" onClick={extractStudentLevels}>Extract {supportPlanSource === "diagnostic" ? "Diagnostic" : "CA"} Levels</button>
+                    <button type="button" className="primary" onClick={extractStudentLevels}>Run {supportPlanSource === "diagnostic" ? "Attainment" : "Progress"} Analysis</button>
                   </div>
                   <div className="support-source-options" role="group" aria-label="Support plan source">
-                    <button type="button" className={supportPlanSource === "diagnostic" ? "active" : ""} onClick={() => { setSupportPlanSource("diagnostic"); setTierSnapshot(null); setSupportPlanReady(false); }}><b>Diagnostic Support Plan</b><span>Uses the automatically linked Diagnostic result and skill areas.</span></button>
-                    <button type="button" className={supportPlanSource === "ca" ? "active" : ""} onClick={() => { setSupportPlanSource("ca"); setTierSnapshot(null); setSupportPlanReady(false); }}><b>CA Marks Support Plan</b><span>Uses the current Continuous Assessment Total /100.</span></button>
+                    <button type="button" className={supportPlanSource === "diagnostic" ? "active" : ""} onClick={() => { setSupportPlanSource("diagnostic"); setTierSnapshot(null); setSupportPlanReady(false); }}><b>Attainment Analysis</b><span>Uses the automatically linked Diagnostic results to analyse baseline attainment, skill strengths and priority needs.</span></button>
+                    <button type="button" className={supportPlanSource === "ca" ? "active" : ""} onClick={() => { setSupportPlanSource("ca"); setTierSnapshot(null); setSupportPlanReady(false); }}><b>Progress Analysis</b><span>Uses the current Continuous Assessment marks to analyse ongoing progress and current support needs.</span></button>
                   </div>
                   <div className="tier-rule-grid">
                     {(["Tier 1", "Tier 2", "Tier 3"] as TierName[]).map((tier) => (
@@ -2215,7 +2215,7 @@ export default function Home({
                         <div className="support-warning">Students with no {supportPlanSource === "diagnostic" ? "linked Diagnostic result" : "entered continuous-assessment marks"} are not placed in a tier yet.</div>
                       )}
                       <div className="support-actions">
-                        <button type="button" className="secondary" onClick={() => setSupportPlanReady(true)}>Generate Class Support Plan</button>
+                        <button type="button" className="secondary" onClick={() => setSupportPlanReady(true)}>Generate Plan from Analysis</button>
                         <button type="button" className="primary" disabled={!supportPlanReady} onClick={printSupportPlan}>Print / Save Support Plan as PDF</button>
                       </div>
                       {supportPlanReady && (
