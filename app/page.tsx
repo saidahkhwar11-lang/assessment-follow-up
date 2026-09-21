@@ -905,6 +905,20 @@ export default function Home({
     const win=window.open("","_blank");
     if(!win){flash("Please allow pop-ups to open the analysis page.");return}
     win.document.open();win.document.write(html);win.document.close();
+    // Bind controls from the parent page as well as the generated page's inline handlers.
+    // This keeps the analysis controls working even when a browser blocks script created by document.write.
+    const d = win.document;
+    const byId = (id: string) => d.getElementById(id) as HTMLSelectElement | HTMLElement | null;
+    const toggleAnalysisControls = () => {
+      const att = byId("attType") as HTMLSelectElement | null;
+      const prog = byId("progType") as HTMLSelectElement | null;
+      byId("attAssessmentWrap")?.classList.toggle("hidden", att?.value !== "assessment");
+      byId("diagDiagWrap")?.classList.toggle("hidden", prog?.value !== "diagdiag");
+      byId("skillWrap")?.classList.toggle("hidden", prog?.value !== "skill");
+    };
+    (byId("attType") as HTMLSelectElement | null)?.addEventListener("change", toggleAnalysisControls);
+    (byId("progType") as HTMLSelectElement | null)?.addEventListener("change", toggleAnalysisControls);
+    toggleAnalysisControls();
   }
 
   function extractStudentLevels() {
