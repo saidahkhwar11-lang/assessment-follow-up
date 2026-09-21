@@ -256,10 +256,8 @@ export default function Home({
       diagnosticDb,
       `teacherControlCenter/diagnosticByGrade/grade${grade}/resultsByStudent`,
     );
-    const linkedRef = databaseRef(diagnosticDb, `assessmentTracker/diagnosticByStudent`);
     let legacyRaw: Record<string, Record<string, DiagnosticResult>> = {};
     let currentRaw: Record<string, Record<string, DiagnosticResult>> = {};
-    let linkedRaw: Record<string, Record<string, Record<string, DiagnosticResult>>> = {};
     const rebuild = () => {
       const next: Record<string, DiagnosticResult> = {};
       const latestRank: Record<string, { time: number; key: string }> = {};
@@ -283,15 +281,6 @@ export default function Home({
           consider(`current:${studentKey}:${levelKey}`, result),
         ),
       );
-      Object.entries(linkedRaw).forEach(([studentKey, gradeRows]) =>
-        Object.entries(gradeRows || {}).forEach(([gradeKey, levelRows]) => {
-          const match = String(gradeKey).match(/grade(\d+)/i);
-          if (!match || Number(match[1]) !== grade) return;
-          Object.entries(levelRows || {}).forEach(([levelKey, result]) =>
-            consider(`linked:${studentKey}:${gradeKey}:${levelKey}`, result),
-          );
-        }),
-      );
       setDiagnosticResults(next);
     };
     const unsubscribeLegacy = onValue(legacyRef, (snapshot) => {
@@ -302,14 +291,9 @@ export default function Home({
       currentRaw = (snapshot.val() || {}) as Record<string, Record<string, DiagnosticResult>>;
       rebuild();
     });
-    const unsubscribeLinked = onValue(linkedRef, (snapshot) => {
-      linkedRaw = (snapshot.val() || {}) as Record<string, Record<string, Record<string, DiagnosticResult>>>;
-      rebuild();
-    });
     return () => {
       unsubscribeLegacy();
       unsubscribeCurrent();
-      unsubscribeLinked();
     };
   }, [selected?.grade]);
 
