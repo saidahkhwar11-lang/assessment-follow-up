@@ -2329,7 +2329,7 @@ export default function Home({
                               return categoryTests.map((t) => (
                                 <td key={t.id}>
                                   {isTargeted(t, s.id) ? (
-                                    <input aria-label={`${s.name} ${t.title}`} title={onlineScoreFor(t.id, s) ? "Filled automatically from the online exam" : "Teacher-entered mark"} type="number" min="0" max={t.max} value={scoreFor(t.id, s.id)} placeholder="—" disabled={!canEdit || !!onlineScoreFor(t.id, s)} onChange={(e) => void updateScore(t, s, e.target.value)} />
+                                    <input aria-label={`${s.name} ${t.title}`} title={onlineScoreFor(t.id, s) ? "Filled automatically from the online exam" : "Teacher-entered mark"} type="number" min="0" max={t.max} value={scoreFor(t.id, s.id)} placeholder="—" disabled={!canEdit || !!onlineScoreFor(t.id, s)} onWheel={(e) => { e.currentTarget.blur(); }} onChange={(e) => void updateScore(t, s, e.target.value)} />
                                   ) : (
                                     <span className="not-targeted">N/A</span>
                                   )}
