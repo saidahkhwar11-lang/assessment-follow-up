@@ -1923,6 +1923,11 @@ export default function Home({
             ← Back to live overview
           </button>
         )}
+        {actingAsAdmin && role === "admin" && (
+          <button className="primary" onClick={() => void downloadFullSchoolBackup()} disabled={busy}>
+            ⇩ Full School Backup
+          </button>
+        )}
         {canEdit && (
           <button className="primary" onClick={() => setShowClassForm((v) => !v)}>
             ＋ Add my class
