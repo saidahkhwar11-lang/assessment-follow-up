@@ -14,6 +14,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDocs,
   onSnapshot,
   query,
   setDoc,
@@ -567,6 +568,42 @@ export default function Home({
       flash("Password reset email sent");
     } catch {
       flash("Could not send the reset email");
+    }
+  }
+
+  async function downloadFullSchoolBackup() {
+    if (!actingAsAdmin) return;
+    setBusy(true);
+    try {
+      const collectionNames = ["classes", "students", "assessments", "scores", "comments"] as const;
+      const snapshots = await Promise.all(collectionNames.map((name) => getDocs(collection(db, name))));
+      const firestore = Object.fromEntries(snapshots.map((snapshot, index) => [
+        collectionNames[index],
+        snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
+      ]));
+      const backup = {
+        format: "Al Reyada Assessment Tracker Full School Backup",
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        firebaseProject: "assessment-follow-up",
+        collections: firestore,
+        notes: "Read-only export. Includes all Firestore classes, students, assessments, scores and comments visible to the coordinator account. Realtime Diagnostic/Exam Platform data is backed up separately.",
+      };
+      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `Assessment-Tracker-Full-School-Backup-${new Date().toISOString().slice(0,10)}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      flash("Full school backup downloaded");
+    } catch (error) {
+      console.error("Full school backup failed", error);
+      flash("Full backup could not be downloaded. No Tracker data was changed.");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -2386,6 +2423,11 @@ export default function Home({
                 <button className="primary" onClick={downloadExcel}>
                   ⇩ Download Excel table
                 </button>
+                {actingAsAdmin && (
+                  <button className="primary" onClick={() => void downloadFullSchoolBackup()} disabled={busy}>
+                    ⇩ Full School Backup
+                  </button>
+                )}
               </section>
               <section className="panel discussion">
                 <div className="panel-head">
