@@ -141,13 +141,14 @@ const plan: Record<TestType, number> = {
   Bonus: 0,
 };
 const continuousWeights: Record<ContinuousCategory, number> = {
-  Spelling: 25,
-  Reading: 25,
-  Writing: 15,
+  Spelling: 20,
+  Reading: 30,
+  Writing: 30,
   Speaking: 10,
   Listening: 10,
-  Coursework: 15,
+  Coursework: 0,
 };
+const caCategories: ContinuousCategory[] = ["Spelling", "Reading", "Writing", "Speaking", "Listening"];
 const continuousCategories = Object.keys(continuousWeights) as ContinuousCategory[];
 const continuousCategoryFor = (type: TestType): ContinuousCategory | null => {
   if (type === "Diagnostic") return null;
@@ -776,7 +777,7 @@ export default function Home({
     const numeric =
       value === ""
         ? ""
-        : String(Math.max(0, Math.min(test.max, Number(value))));
+        : String(Math.max(0, Number(value)));
     const id = `${test.id}_${student.id}`,
       record: Score = {
         id,
@@ -814,20 +815,25 @@ export default function Home({
         (sum, test) => sum + Number(scoreFor(test.id, studentId) || 0),
         0,
       );
-      breakdown[category] = maximum
-        ? Math.min(continuousWeights[category], (earned / maximum) * continuousWeights[category])
+      breakdown[category] = maximum && continuousWeights[category] > 0
+        ? (earned / maximum) * continuousWeights[category]
         : null;
     });
     return breakdown;
   };
   const continuousTotal = (studentId: string) => {
     const breakdown = continuousBreakdown(studentId);
-    const total = continuousCategories.reduce(
+    const total = caCategories.reduce(
       (sum, category) => sum + (breakdown[category] ?? 0),
       0,
     );
-    return Math.round(Math.min(100, total));
+    return Math.round(total);
   };
+  const courseworkBonus = (studentId: string) =>
+    selectedTests
+      .filter((test) => continuousCategoryFor(test.type) === "Coursework" && isTargeted(test, studentId))
+      .reduce((sum, test) => sum + Number(scoreFor(test.id, studentId) || 0), 0);
+  const finalWithBonus = (studentId: string) => continuousTotal(studentId) + courseworkBonus(studentId);
   const hasContinuousAssessmentData = (studentId: string) =>
     selectedTests.some(
       (test) =>
@@ -2295,7 +2301,7 @@ export default function Home({
                             {category}<small>{continuousWeights[category]}%</small>
                           </th>
                         ))}
-                        <th rowSpan={2} className="total-head">Weighted CA total<small>/100</small></th>
+                        <th rowSpan={2} className="total-head">CA Final<small>/100 + Coursework bonus</small></th>
                       </tr>
                       <tr className="assessment-head-row">
                         {continuousCategories.flatMap((category) => {
@@ -2371,14 +2377,14 @@ export default function Home({
                               return categoryTests.map((t) => (
                                 <td key={t.id}>
                                   {isTargeted(t, s.id) ? (
-                                    <input aria-label={`${s.name} ${t.title}`} title={onlineScoreFor(t.id, s) ? "Filled automatically from the online exam" : "Teacher-entered mark"} type="number" min="0" max={t.max} value={scoreFor(t.id, s.id)} placeholder="—" disabled={!canEdit || !!onlineScoreFor(t.id, s)} onWheel={(e) => { e.currentTarget.blur(); }} onChange={(e) => void updateScore(t, s, e.target.value)} />
+                                    <input aria-label={`${s.name} ${t.title}`} title={onlineScoreFor(t.id, s) ? "Filled automatically from the online exam" : "Teacher-entered mark"} type="number" min="0" value={scoreFor(t.id, s.id)} placeholder="—" disabled={!canEdit || !!onlineScoreFor(t.id, s)} onWheel={(e) => { e.currentTarget.blur(); }} onChange={(e) => void updateScore(t, s, e.target.value)} />
                                   ) : (
                                     <span className="not-targeted">N/A</span>
                                   )}
                                 </td>
                               ));
                             })}
-                            <td className="total-cell"><b>{continuousTotal(s.id)}</b><small>/100</small></td>
+                            <td className="total-cell"><b>{continuousTotal(s.id)}</b><small>/100 CA · +{courseworkBonus(s.id)} bonus = {finalWithBonus(s.id)}</small></td>
                           </tr>
                         ))
                       )}
