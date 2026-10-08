@@ -1,0 +1,54 @@
+name: Publish Assessment Tracker Backup Update
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/publish-assessment-tracker.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: assessment-tracker-static-publish
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Build Next.js static export
+        run: npm run build
+      - name: Verify generated admin site
+        shell: bash
+        run: |
+          test -s out/index.html
+          test -s out/admin/index.html
+          test -d out/_next/static
+          grep -q 'assessment-follow-up/_next' out/admin/index.html
+      - name: Publish only compiled Tracker website assets
+        shell: bash
+        run: |
+          cp out/index.html index.html
+          mkdir -p admin _next
+          cp out/admin/index.html admin/index.html
+          cp -a out/_next/. _next/
+          git add -f index.html admin/index.html _next/
+          if git diff --cached --quiet; then
+            echo "No generated changes to publish"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Publish compiled Assessment Tracker admin backup update"
+          git push
