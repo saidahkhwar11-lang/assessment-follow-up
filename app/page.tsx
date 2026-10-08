@@ -22,7 +22,7 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { auth, coordinatorEmail, db, diagnosticDb } from "./firebase";
-import { onValue, ref as databaseRef, set as databaseSet } from "firebase/database";
+import { get as databaseGet, onValue, ref as databaseRef, set as databaseSet } from "firebase/database";
 
 type TestType =
   | "Diagnostic"
@@ -576,30 +576,59 @@ export default function Home({
     if (!actingAsAdmin) return;
     setBusy(true);
     try {
+      // Export every teacher's Tracker records, not only the currently selected class.
+      // This is a read-only operation: no Firestore or Realtime Database writes.
       const collectionNames = ["classes", "students", "assessments", "scores", "comments"] as const;
       const snapshots = await Promise.all(collectionNames.map((name) => getDocs(collection(db, name))));
       const firestore = Object.fromEntries(snapshots.map((snapshot, index) => [
         collectionNames[index],
         snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
       ]));
+      const counts = Object.fromEntries(collectionNames.map((name) => [
+        name, (firestore[name] as unknown[]).length,
+      ]));
+      // The Tracker also reads these Realtime Database sources for diagnostic
+      // results and online exam results. Export them separately from Firestore.
+      const realtimePaths = [
+        "assessmentTracker/diagnosticByStudent",
+        "assessmentTracker/studentIdRegistry",
+        "teacherControlCenter/diagnosticByGrade",
+        "examPlatform/resultsByAssessment",
+      ];
+      const realtime: Record<string, unknown> = {};
+      const realtimeErrors: string[] = [];
+      for (const path of realtimePaths) {
+        try {
+          const snapshot = await databaseGet(databaseRef(diagnosticDb, path));
+          realtime[path] = snapshot.exists() ? snapshot.val() : null;
+        } catch (error) {
+          realtimeErrors.push(path + ": " + (error instanceof Error ? error.message : String(error)));
+        }
+      }
       const backup = {
         format: "Al Reyada Assessment Tracker Full School Backup",
-        version: 1,
+        version: 2,
         exportedAt: new Date().toISOString(),
-        firebaseProject: "assessment-follow-up",
+        scope: "All teacher Tracker records accessible to the administrator",
         collections: firestore,
-        notes: "Read-only export. Includes all Firestore classes, students, assessments, scores and comments visible to the coordinator account. Realtime Diagnostic/Exam Platform data is backed up separately.",
+        collectionCounts: counts,
+        realtimeDatabase: realtime,
+        realtimeErrors,
+        complete: realtimeErrors.length === 0,
+        notes: "Read-only export. Includes all accessible Tracker Firestore classes, students, assessments, scores, comments and listed Realtime diagnostic/exam results. Other independently hosted exam-platform data, Firebase Authentication accounts and external files are not included.",
       };
       const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `Assessment-Tracker-Full-School-Backup-${new Date().toISOString().slice(0,10)}.json`;
+      link.download = `Assessment-Tracker-${realtimeErrors.length ? "INCOMPLETE-" : ""}Full-School-Backup-${new Date().toISOString().slice(0,10)}.json`;
       document.body.appendChild(link);
       link.click();
       link.remove();
-      URL.revokeObjectURL(url);
-      flash("Full school backup downloaded");
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      flash(realtimeErrors.length
+        ? "Tracker backup downloaded with missing Realtime data — review realtimeErrors"
+        : "Full Tracker backup downloaded (Firestore and Realtime data)");
     } catch (error) {
       console.error("Full school backup failed", error);
       flash("Full backup could not be downloaded. No Tracker data was changed.");
