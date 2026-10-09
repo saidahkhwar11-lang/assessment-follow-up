@@ -2232,8 +2232,8 @@ export default function Home({
                   )}
                 </div>
                 <div className="weighting-note">
-                  <b>Weighted CA:</b> Spelling 25% · Reading 25% · Writing 15% · Speaking 10% · Listening 10% · Coursework 15%.
-                  <span>Coursework combines Extra Credit Exam and Bonus. Existing marks are unchanged.</span>
+                  <b>Weighted CA:</b> Spelling 20% · Reading 30% · Writing 30% · Speaking 10% · Listening 10% (total 100%).
+                  <span>Coursework (Extra Credit Exam and Bonus) is added separately on top of the CA total, even when the final score exceeds 100. Diagnostic results are separate from CA. Existing marks are unchanged.</span>
                 </div>
                 {canEdit && (
                   <div className="add-test">
